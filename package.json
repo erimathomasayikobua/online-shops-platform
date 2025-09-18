@@ -1,0 +1,87 @@
+{
+  "name": "online-shops-platform",
+  "version": "1.0.0",
+  "description": "A comprehensive online chain of shops platform with multiple interfaces for clients, shop owners, administrators, and customer care",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "client-frontend",
+    "shop-owner-dashboard",
+    "admin-panel",
+    "customer-care-dashboard",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:client\" \"npm run dev:shop-owner\" \"npm run dev:admin\" \"npm run dev:customer-care\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:client": "cd client-frontend && npm start",
+    "dev:shop-owner": "cd shop-owner-dashboard && npm start",
+    "dev:admin": "cd admin-panel && npm start",
+    "dev:customer-care": "cd customer-care-dashboard && npm start",
+    "build": "npm run build:backend && npm run build:client && npm run build:shop-owner && npm run build:admin && npm run build:customer-care",
+    "build:backend": "cd backend && npm run build",
+    "build:client": "cd client-frontend && npm run build",
+    "build:shop-owner": "cd shop-owner-dashboard && npm run build",
+    "build:admin": "cd admin-panel && npm run build",
+    "build:customer-care": "cd customer-care-dashboard && npm run build",
+    "test": "npm run test:backend && npm run test:client && npm run test:shop-owner && npm run test:admin && npm run test:customer-care",
+    "test:backend": "cd backend && npm test",
+    "test:client": "cd client-frontend && npm test",
+    "test:shop-owner": "cd shop-owner-dashboard && npm test",
+    "test:admin": "cd admin-panel && npm test",
+    "test:customer-care": "cd customer-care-dashboard && npm test",
+    "lint": "npm run lint:backend && npm run lint:client && npm run lint:shop-owner && npm run lint:admin && npm run lint:customer-care",
+    "lint:backend": "cd backend && npm run lint",
+    "lint:client": "cd client-frontend && npm run lint",
+    "lint:shop-owner": "cd shop-owner-dashboard && npm run lint",
+    "lint:admin": "cd admin-panel && npm run lint",
+    "lint:customer-care": "cd customer-care-dashboard && npm run lint",
+    "setup": "npm install && npm run install:all",
+    "install:all": "concurrently \"cd backend && npm install\" \"cd client-frontend && npm install\" \"cd shop-owner-dashboard && npm install\" \"cd admin-panel && npm install\" \"cd customer-care-dashboard && npm install\"",
+    "clean": "npm run clean:backend && npm run clean:client && npm run clean:shop-owner && npm run clean:admin && npm run clean:customer-care",
+    "clean:backend": "cd backend && rm -rf node_modules dist",
+    "clean:client": "cd client-frontend && rm -rf node_modules build",
+    "clean:shop-owner": "cd shop-owner-dashboard && rm -rf node_modules build",
+    "clean:admin": "cd admin-panel && rm -rf node_modules build",
+    "clean:customer-care": "cd customer-care-dashboard && rm -rf node_modules build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,css,md}": [
+      "prettier --write"
+    ]
+  },
+  "keywords": [
+    "e-commerce",
+    "online-shops",
+    "multi-tenant",
+    "marketplace",
+    "react",
+    "nodejs",
+    "mongodb",
+    "platform"
+  ],
+  "author": "Online Shops Platform Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/online-shops-platform.git"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}
