@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-const currency = (value) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+const currency = (value) => `Ugx ${Math.round(Number(value || 0)).toLocaleString('en-UG')}`;
 
 function App() {
   const [overview, setOverview] = useState(null);
@@ -31,7 +31,9 @@ function App() {
   return (
     <div className="admin-shell">
       <aside className="sidebar">
-        <strong>Platform Admin</strong>
+        <a className="brand-logo" href="#shops" aria-label="Erim admin">
+          <img src="/erim-logo.png" alt="Erim" />
+        </a>
         <a href="#shops">Shops</a>
         <a href="#orders">Orders</a>
         <a href="#risk">Risk</a>

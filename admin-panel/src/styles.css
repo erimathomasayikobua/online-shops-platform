@@ -42,9 +42,21 @@ button {
   padding: 28px 18px;
 }
 
-.sidebar strong {
-  font-size: 20px;
+.brand-logo {
+  background: #fff;
+  border-radius: 8px;
+  display: flex;
+  height: 74px;
   margin-bottom: 18px;
+  padding: 8px 10px;
+  width: 168px;
+}
+
+.brand-logo img {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
 }
 
 .sidebar a {
