@@ -480,6 +480,11 @@ button:disabled {
   margin-top: -8px;
 }
 
+.chat-panel {
+  max-width: 720px;
+  width: min(720px, 100%);
+}
+
 .notification-item {
   border-bottom: 1px solid #edf1f6;
   display: grid;
@@ -503,6 +508,57 @@ button:disabled {
   max-height: 310px;
   overflow: auto;
   padding: 10px 0;
+}
+
+.merchant-chat-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 230px 1fr;
+  min-height: 330px;
+}
+
+.chat-thread-list {
+  border-right: 1px solid #edf1f6;
+  display: grid;
+  gap: 8px;
+  max-height: 330px;
+  overflow: auto;
+  padding: 10px 12px 10px 0;
+}
+
+.chat-thread-list button {
+  background: #fff;
+  border: 1px solid #dfe6f0;
+  color: #061128;
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+  min-height: auto;
+  padding: 10px;
+  text-align: left;
+}
+
+.chat-thread-list button.selected {
+  background: #e8f0ff;
+  border-color: #0f62fe;
+}
+
+.chat-thread-list span,
+.chat-empty span {
+  color: #60718e;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.chat-empty {
+  align-content: center;
+  background: #f8fafc;
+  border: 1px dashed #dfe6f0;
+  border-radius: 10px;
+  display: grid;
+  gap: 6px;
+  min-height: 120px;
+  padding: 16px;
 }
 
 .chat-message {
@@ -804,7 +860,9 @@ mark.delivered {
 }
 
 mark.packing,
-mark.pending {
+mark.pending,
+mark.awaiting_arrangement,
+mark.arranging_terms {
   background: #ffedd5;
   color: #f97316;
 }
@@ -994,6 +1052,65 @@ textarea {
   min-height: 58px;
 }
 
+.orders-workspace {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
+}
+
+.order-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.order-chat-panel {
+  align-content: start;
+  display: grid;
+  gap: 14px;
+}
+
+.arrangement-card {
+  background: #f8fafc;
+  border: 1px solid #dfe6f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.arrangement-card p,
+.arrangement-card span,
+.arrangement-card small {
+  color: #60718e;
+  margin: 0;
+}
+
+.order-chat-thread {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.order-chat-thread article {
+  background: #f1f5f9;
+  border-radius: 12px;
+  display: grid;
+  gap: 5px;
+  justify-self: start;
+  max-width: 86%;
+  padding: 10px 12px;
+}
+
+.order-chat-thread article.mine {
+  background: #e8f0ff;
+  justify-self: end;
+}
+
+.order-chat-thread span {
+  color: #60718e;
+}
+
 .table-head {
   color: #60718e;
   font-size: 12px;
@@ -1126,6 +1243,7 @@ textarea {
   .split-grid,
   .pos-grid,
   .rent-page,
+  .orders-workspace,
   .plan-grid,
   .form-grid,
   .verification-grid,
@@ -1144,6 +1262,18 @@ textarea {
 
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .merchant-chat-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-thread-list {
+    border-right: 0;
+    border-bottom: 1px solid #edf1f6;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(180px, 1fr);
+    padding: 10px 0 12px;
   }
 }
 

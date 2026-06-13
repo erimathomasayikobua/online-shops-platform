@@ -33,6 +33,13 @@ const formatTimeAgo = (dateValue) => {
 };
 
 function App() {
+  const [careUser, setCareUser] = useState(() => {
+    const saved = localStorage.getItem('erimCareAuth');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [authForm, setAuthForm] = useState({ email: 'care@erim.test', password: 'pass123' });
+  const [authNotice, setAuthNotice] = useState('');
+  const [passwordChange, setPasswordChange] = useState({ session: null, currentPassword: '', newPassword: '', personalEmail: '' });
   const [overview, setOverview] = useState(null);
   const [activePage, setActivePage] = useState('dashboard');
   const [selectedTicketId, setSelectedTicketId] = useState('');
@@ -55,6 +62,8 @@ function App() {
   });
 
   const loadOverview = () => {
+    if (!careUser) return;
+
     fetch(`${API_URL}/customer-care/overview`)
       .then((response) => response.json())
       .then((data) => {
@@ -64,7 +73,68 @@ function App() {
       .catch(() => setNotice('Backend is offline. Start it with npm run dev:backend.'));
   };
 
-  useEffect(loadOverview, []);
+  useEffect(loadOverview, [careUser]);
+
+  const loginCare = async (event) => {
+    event.preventDefault();
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(authForm)
+    });
+    const result = await response.json();
+
+    if (!response.ok || result.user.role !== 'care') {
+      setAuthNotice(result.message || 'Use a customer-care account to access this dashboard.');
+      return;
+    }
+
+    const session = { user: result.user, token: result.token };
+    if (result.requiresPasswordChange) {
+      setPasswordChange({ session, currentPassword: authForm.password, newPassword: '', personalEmail: result.user.personalEmail || result.user.email || '' });
+      setAuthNotice('Temporary password accepted. Create a permanent password and register your personal email.');
+      return;
+    }
+    localStorage.setItem('erimCareAuth', JSON.stringify(session));
+    setCareUser(session);
+    setAuthNotice('');
+    setNotice(`Welcome back, ${result.user.name}.`);
+  };
+
+  const completePasswordChange = async (event) => {
+    event.preventDefault();
+    const response = await fetch(`${API_URL}/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: passwordChange.session.user.id,
+        currentPassword: passwordChange.currentPassword,
+        newPassword: passwordChange.newPassword,
+        personalEmail: passwordChange.personalEmail
+      })
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      setAuthNotice(result.message || 'Password change failed.');
+      return;
+    }
+
+    const session = { user: result.user, token: result.token };
+    localStorage.setItem('erimCareAuth', JSON.stringify(session));
+    setCareUser(session);
+    setPasswordChange({ session: null, currentPassword: '', newPassword: '', personalEmail: '' });
+    setAuthNotice('');
+    setNotice(result.message);
+  };
+
+  const logoutCare = () => {
+    localStorage.removeItem('erimCareAuth');
+    setCareUser(null);
+    setOverview(null);
+    setSelectedTicketId('');
+    setNotice('');
+  };
 
   const tickets = overview?.tickets || [];
   const orders = overview?.orders || [];
@@ -375,6 +445,58 @@ function App() {
 
   const content = activePage === 'dashboard' ? renderDashboard() : renderFeaturePage();
 
+  if (!careUser) {
+    if (passwordChange.session) {
+      return (
+        <div className="care-auth-shell">
+          <section className="auth-brand-panel">
+            <a className="brand-logo" href="#login" aria-label="ERIM care login"><img src="/erim-logo.png" alt="Erim" /></a>
+            <div><p className="auth-eyebrow">First login security</p><h1>Create your permanent password.</h1><p>Admin-created customer-care accounts must set a private password and register a personal email before access.</p></div>
+          </section>
+          <main className="auth-form-panel">
+            <form className="auth-card" onSubmit={completePasswordChange}>
+              <div><p className="auth-eyebrow">Required step</p><h2>Secure your account</h2></div>
+              <label>Personal Email<input type="email" value={passwordChange.personalEmail} onChange={(event) => setPasswordChange({ ...passwordChange, personalEmail: event.target.value })} required /></label>
+              <label>New Password<input type="password" value={passwordChange.newPassword} onChange={(event) => setPasswordChange({ ...passwordChange, newPassword: event.target.value })} required /></label>
+              {authNotice && <p className="notice">{authNotice}</p>}
+              <button type="submit">Save Permanent Password</button>
+            </form>
+          </main>
+        </div>
+      );
+    }
+
+    return (
+      <div className="care-auth-shell">
+        <section className="auth-brand-panel">
+          <a className="brand-logo" href="#login" aria-label="ERIM care login"><img src="/erim-logo.png" alt="Erim" /></a>
+          <div>
+            <p className="auth-eyebrow">ERIM Customer Care</p>
+            <h1>Secure access for support agents.</h1>
+            <p>Handle customer tickets, replies, calls, knowledge base content, and SLA work from one protected support workspace.</p>
+          </div>
+          <div className="auth-demo-card">
+            <strong>Demo care agent</strong>
+            <span>care@erim.test</span>
+            <small>Password: pass123</small>
+          </div>
+        </section>
+        <main className="auth-form-panel">
+          <form className="auth-card" onSubmit={loginCare}>
+            <div>
+              <p className="auth-eyebrow">Support login</p>
+              <h2>Sign in to Customer Care</h2>
+            </div>
+            <label>Email<input type="email" value={authForm.email} onChange={(event) => setAuthForm({ ...authForm, email: event.target.value })} required /></label>
+            <label>Password<input type="password" value={authForm.password} onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })} required /></label>
+            {authNotice && <p className="notice">{authNotice}</p>}
+            <button type="submit">Login to Care Dashboard</button>
+          </form>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="care-shell">
       <aside className="care-sidebar">
@@ -396,6 +518,7 @@ function App() {
           ))}
         </nav>
         <button className="help-card" onClick={() => setActivePage('knowledge')}><strong>Need Help?</strong><span>View Support Guide</span></button>
+        <button className="help-card logout-card" onClick={logoutCare}><strong>Logout</strong><span>{careUser.user.name}</span></button>
       </aside>
 
       <main className="care-main">
@@ -404,7 +527,7 @@ function App() {
           <label className="care-search"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tickets, customers..." /></label>
           <select className="agent-status" value={agentStatus} onChange={(event) => setAgentStatus(event.target.value)}><option>Online</option><option>Busy</option><option>Away</option></select>
           <button className="bell-button">Bell <b>8</b></button>
-          <button className="agent-profile" onClick={() => setActivePage('settings')}><span>SC</span><strong>Sneha Chowdhury<small>Support Agent</small></strong></button>
+          <button className="agent-profile" onClick={logoutCare}><span>{careUser.user.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span><strong>{careUser.user.name}<small>Logout</small></strong></button>
         </header>
 
         <div className="care-actions-row">

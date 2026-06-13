@@ -44,6 +44,83 @@ button:disabled {
   min-height: 100vh;
 }
 
+.care-auth-shell {
+  background: #f8fafc;
+  display: grid;
+  grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.05fr);
+  min-height: 100vh;
+}
+
+.auth-brand-panel {
+  background: radial-gradient(circle at top left, #0f2a56, #020a18 72%);
+  color: #fff;
+  display: grid;
+  gap: 32px;
+  grid-auto-rows: max-content;
+  padding: clamp(28px, 5vw, 64px);
+}
+
+.auth-brand-panel h1 {
+  font-size: clamp(38px, 5vw, 68px);
+  letter-spacing: 0;
+  line-height: 0.98;
+  margin: 12px 0;
+}
+
+.auth-brand-panel p {
+  color: #d8e5f7;
+  max-width: 620px;
+}
+
+.auth-eyebrow {
+  color: #ff6b00;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.auth-demo-card {
+  align-self: end;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  display: grid;
+  gap: 7px;
+  max-width: 320px;
+  padding: 16px;
+}
+
+.auth-demo-card span,
+.auth-demo-card small {
+  color: #d8e5f7;
+}
+
+.auth-form-panel {
+  align-content: center;
+  display: grid;
+  padding: clamp(22px, 5vw, 58px);
+}
+
+.auth-card {
+  background: #fff;
+  border: 1px solid #dfe6f0;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+  display: grid;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 520px;
+  padding: clamp(24px, 4vw, 42px);
+  width: 100%;
+}
+
+.auth-card h2 {
+  font-size: 32px;
+  margin: 6px 0 0;
+}
+
 .care-sidebar {
   background: radial-gradient(circle at top left, #0f2a56, #020a18 72%);
   color: #fff;
@@ -88,6 +165,10 @@ button:disabled {
   justify-content: flex-start;
   padding: 0 14px;
   width: 100%;
+}
+
+.logout-card {
+  margin-top: 8px;
 }
 
 .care-sidebar nav button.active,
@@ -735,6 +816,7 @@ textarea {
 
 @media (max-width: 1240px) {
   .care-shell,
+  .care-auth-shell,
   .care-content-layout,
   .care-dashboard-grid,
   .care-bottom-grid,

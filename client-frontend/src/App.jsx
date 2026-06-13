@@ -8,7 +8,7 @@ const currencies = [
   { code: 'KES', label: 'Kshs', rate: 130 / 3800, locale: 'en-KE' },
   { code: 'TZS', label: 'Tshs', rate: 2600 / 3800, locale: 'en-TZ' },
   { code: 'EUR', label: 'Euro', rate: 0.92 / 3800, locale: 'de-DE' },
-  { code: 'RWF', label: 'Rwandan Francs', rate: 1300 / 3800, locale: 'rw-RW' },
+  { code: 'FRw', label: 'FRw', rate: 1300 / 3800, locale: 'rw-RW' },
   { code: 'CDF', label: 'DRC Francs', rate: 2850 / 3800, locale: 'fr-CD' },
   { code: 'SSP', label: 'South Sudan Pounds', rate: 1100 / 3800, locale: 'en-SS' }
 ];
@@ -27,9 +27,11 @@ const currency = (value, selectedCurrency) => {
   }).format(converted);
 };
 
-const getCategoryProducts = (products, category) => {
+const getCategoryProducts = (products, category, categoryTree = []) => {
   if (category === 'All') return products;
-  return products.filter((product) => product.category === category);
+  const group = categoryTree.find((item) => item.name === category);
+  const acceptedCategories = group ? [group.name, ...group.subcategories] : [category];
+  return products.filter((product) => acceptedCategories.includes(product.category));
 };
 
 const roleDestinations = {
@@ -40,7 +42,7 @@ const roleDestinations = {
 };
 
 function App() {
-  const [catalog, setCatalog] = useState({ shops: [], products: [], categories: [] });
+  const [catalog, setCatalog] = useState({ shops: [], products: [], categories: [], categoryTree: [] });
   const [view, setView] = useState('storefront');
   const [authMode, setAuthMode] = useState('login');
   const [authForm, setAuthForm] = useState({ name: '', email: 'customer@erim.test', password: 'pass123', role: 'customer' });
@@ -67,12 +69,26 @@ function App() {
   const [cart, setCart] = useState([]);
   const [notice, setNotice] = useState('');
   const [authNotice, setAuthNotice] = useState('');
+  const [authOtp, setAuthOtp] = useState('');
+  const [pendingAuthUser, setPendingAuthUser] = useState(null);
+  const [passwordChange, setPasswordChange] = useState({ user: null, currentPassword: '', newPassword: '', personalEmail: '' });
   const [kycNotice, setKycNotice] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState('standard');
-  const [paymentMethod, setPaymentMethod] = useState('Mobile Money');
-  const [paymentNetwork, setPaymentNetwork] = useState('MTN Mobile Money');
-  const [checkoutPhone, setCheckoutPhone] = useState('+256 700 123 456');
+  const [arrangementMode, setArrangementMode] = useState('Delivery');
+  const [arrangementContact, setArrangementContact] = useState('+256 700 123 456');
+  const [merchantMessage, setMerchantMessage] = useState('Hi, I would like to arrange delivery details and agree on payment terms before fulfillment.');
   const [lastOrder, setLastOrder] = useState(null);
+  const [showFloatingMenu, setShowFloatingMenu] = useState(false);
+  const [showMerchantMessenger, setShowMerchantMessenger] = useState(false);
+  const [showCareMessenger, setShowCareMessenger] = useState(false);
+  const [merchantChats, setMerchantChats] = useState([]);
+  const [activeChatId, setActiveChatId] = useState('');
+  const [merchantChatDraft, setMerchantChatDraft] = useState('');
+  const [careTicketId, setCareTicketId] = useState('');
+  const [careChatDraft, setCareChatDraft] = useState('');
+  const [careMessages, setCareMessages] = useState([
+    { id: 'care-welcome', sender: 'ERIM Care', text: 'Hi, welcome to ERIM support. How can we help today?' }
+  ]);
 
   const selectedCurrency = useMemo(() => {
     return currencies.find((item) => item.code === currencyCode) || currencies[0];
@@ -108,7 +124,7 @@ function App() {
 
   const categorySummaries = useMemo(() => {
     const summaries = catalog.categories.map((item) => {
-      const categoryProducts = getCategoryProducts(catalog.products, item);
+      const categoryProducts = getCategoryProducts(catalog.products, item, catalog.categoryTree);
       const fromPrice = categoryProducts.length
         ? Math.min(...categoryProducts.map((product) => product.price))
         : 0;
@@ -130,11 +146,11 @@ function App() {
       },
       ...summaries
     ];
-  }, [catalog.categories, catalog.products]);
+  }, [catalog.categories, catalog.products, catalog.categoryTree]);
 
   const displayedProducts = useMemo(() => {
-    return getCategoryProducts(searchedProducts, category);
-  }, [searchedProducts, category]);
+    return getCategoryProducts(searchedProducts, category, catalog.categoryTree);
+  }, [searchedProducts, category, catalog.categoryTree]);
 
   const groupedProducts = useMemo(() => {
     const activeCategories = category === 'All' ? catalog.categories : [category];
@@ -142,10 +158,10 @@ function App() {
     return activeCategories
       .map((item) => ({
         name: item,
-        products: getCategoryProducts(searchedProducts, item)
+        products: getCategoryProducts(searchedProducts, item, catalog.categoryTree)
       }))
       .filter((group) => group.products.length);
-  }, [catalog.categories, searchedProducts, category]);
+  }, [catalog.categories, catalog.categoryTree, searchedProducts, category]);
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
@@ -156,8 +172,70 @@ function App() {
   ];
   const selectedDelivery = deliveryOptions.find((item) => item.id === deliveryMethod) || deliveryOptions[0];
   const cartTotal = cartSubtotal + selectedDelivery.fee;
+  const selectedChatShopId = cart[0]?.product.shopId || catalog.shops[0]?.id || 'shop-aurora';
+  const selectedChatShop = catalog.shops.find((shop) => shop.id === selectedChatShopId) || catalog.shops[0];
+  const activeMerchantChat = merchantChats.find((chat) => chat.id === activeChatId) || merchantChats[0];
+
+  const loadMerchantChats = (shopId = selectedChatShopId) => {
+    fetch(`${API_URL}/merchant/chats?shopId=${shopId}`)
+      .then((response) => response.json())
+      .then((chats) => {
+        setMerchantChats(chats);
+        if (!activeChatId && chats[0]) {
+          setActiveChatId(chats[0].id);
+        }
+      })
+      .catch(() => setNotice('Merchant chat is temporarily unavailable.'));
+  };
+
+  useEffect(() => {
+    if (!showMerchantMessenger) return undefined;
+
+    loadMerchantChats(selectedChatShopId);
+    const timer = window.setInterval(() => loadMerchantChats(selectedChatShopId), 3000);
+
+    return () => window.clearInterval(timer);
+  }, [showMerchantMessenger, selectedChatShopId]);
+
+  const loadCareTicket = (ticketId = careTicketId) => {
+    if (!ticketId) return;
+
+    fetch(`${API_URL}/customer-care/overview`)
+      .then((response) => response.json())
+      .then((data) => {
+        const ticket = data.tickets?.find((item) => item.id === ticketId);
+        if (!ticket) return;
+
+        setCareMessages([
+          { id: `${ticket.id}-issue`, sender: ticket.customer, text: ticket.issue },
+          ...(ticket.replies || []).map((reply) => ({
+            id: reply.id,
+            sender: reply.agent,
+            text: reply.message
+          }))
+        ]);
+      })
+      .catch(() => setNotice('Customer-care chat is temporarily unavailable.'));
+  };
+
+  useEffect(() => {
+    if (!showCareMessenger || !careTicketId) return undefined;
+
+    loadCareTicket(careTicketId);
+    const timer = window.setInterval(() => loadCareTicket(careTicketId), 3000);
+
+    return () => window.clearInterval(timer);
+  }, [showCareMessenger, careTicketId]);
 
   const addToCart = (product) => {
+    if (!user) {
+      setAuthMode('login');
+      setAuthNotice('Please sign in or create an account before adding items to your cart.');
+      setNotice('Sign in or create an Erim account to add products to cart.');
+      setView('auth');
+      return;
+    }
+
     setCart((items) => {
       const existing = items.find((item) => item.product.id === product.id);
       if (existing) {
@@ -216,6 +294,20 @@ function App() {
       return;
     }
 
+    if (result.requiresPasswordChange) {
+      setPasswordChange({ user: result.user, currentPassword: authForm.password, newPassword: '', personalEmail: result.user.personalEmail || result.user.email || '' });
+      setAuthMode('change-password');
+      setAuthNotice('Temporary password accepted. Create a permanent password and register your personal email.');
+      return;
+    }
+
+    if (result.otpRequired) {
+      setPendingAuthUser(result.user);
+      setAuthMode('verify-otp');
+      setAuthNotice(`OTP sent by ${result.delivery?.channel || 'email'} to ${result.delivery?.destination || result.user.email}.`);
+      return;
+    }
+
     localStorage.setItem('erimToken', result.token);
     localStorage.setItem('erimUser', JSON.stringify(result.user));
     setUser(result.user);
@@ -233,6 +325,58 @@ function App() {
       return;
     }
 
+    setView('storefront');
+  };
+
+  const verifyAuthOtp = async (event) => {
+    event.preventDefault();
+    const response = await fetch(`${API_URL}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: pendingAuthUser?.id, email: pendingAuthUser?.email || authForm.email, otp: authOtp })
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      setAuthNotice(result.message || 'OTP verification failed.');
+      return;
+    }
+
+    localStorage.setItem('erimToken', `demo-token-${result.user.id}`);
+    localStorage.setItem('erimUser', JSON.stringify(result.user));
+    setUser(result.user);
+    setAuthOtp('');
+    setPendingAuthUser(null);
+    setAuthNotice('');
+    setNotice('Account verified. Welcome to Erim.');
+    setView('storefront');
+  };
+
+  const completeAuthPasswordChange = async (event) => {
+    event.preventDefault();
+    const response = await fetch(`${API_URL}/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: passwordChange.user?.id,
+        currentPassword: passwordChange.currentPassword,
+        newPassword: passwordChange.newPassword,
+        personalEmail: passwordChange.personalEmail
+      })
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      setAuthNotice(result.message || 'Password change failed.');
+      return;
+    }
+
+    localStorage.setItem('erimToken', result.token);
+    localStorage.setItem('erimUser', JSON.stringify(result.user));
+    setUser(result.user);
+    setPasswordChange({ user: null, currentPassword: '', newPassword: '', personalEmail: '' });
+    setAuthNotice('');
+    setNotice('Password changed. Welcome to Erim.');
     setView('storefront');
   };
 
@@ -268,11 +412,20 @@ function App() {
     localStorage.removeItem('erimToken');
     localStorage.removeItem('erimUser');
     setUser(null);
+    setCart([]);
     setKycStatus({ status: 'not_started', submission: null });
     setNotice('Signed out of Erim.');
   };
 
   const checkout = () => {
+    if (!user) {
+      setAuthMode('login');
+      setAuthNotice('Please sign in or create an account before checking out.');
+      setNotice('Sign in or create an Erim account to use the cart.');
+      setView('auth');
+      return;
+    }
+
     if (!cart.length) return;
     setView('checkout');
   };
@@ -289,11 +442,13 @@ function App() {
         method: selectedDelivery.label,
         address: 'Kampala, Central Division, Nakasero Plot 45'
       },
-      payment: {
-        method: paymentMethod,
-        network: paymentMethod === 'Mobile Money' ? paymentNetwork : paymentMethod,
-        phone: checkoutPhone
+      status: 'awaiting_arrangement',
+      arrangement: {
+        method: arrangementMode,
+        contact: arrangementContact,
+        details: merchantMessage
       },
+      message: merchantMessage,
       lineItems: cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -313,12 +468,98 @@ function App() {
     }
     setCart([]);
     setLastOrder(created);
-    setNotice(`Order ${created.id} placed. Stock will update after merchant confirmation.`);
+    setNotice(`Order ${created.id} sent to merchant. Chat with the merchant to arrange pickup, delivery, and payment terms.`);
     setView('order-success');
+  };
+
+  const sendMerchantChatMessage = async (event) => {
+    event.preventDefault();
+    const text = merchantChatDraft.trim();
+
+    if (!text) return;
+
+    const customer = user?.name || 'Guest Customer';
+    const response = await fetch(`${API_URL}/merchant/chats/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chatId: activeMerchantChat?.id,
+        shopId: selectedChatShopId,
+        customer,
+        sender: customer,
+        text
+      })
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      setNotice(result.message || 'Message could not be sent.');
+      return;
+    }
+
+    setMerchantChatDraft('');
+    setActiveChatId(result.chat.id);
+    loadMerchantChats(selectedChatShopId);
+  };
+
+  const sendCareChatMessage = async (event) => {
+    event.preventDefault();
+    const text = careChatDraft.trim();
+
+    if (!text) return;
+
+    const customer = user?.name || 'Guest Customer';
+
+    if (!careTicketId) {
+      const response = await fetch(`${API_URL}/customer-care/tickets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer,
+          email: user?.email || '',
+          phone: arrangementContact,
+          subject: 'Customer chat from storefront',
+          issue: text,
+          priority: 'medium',
+          category: 'Storefront Chat',
+          channel: 'chat',
+          orderId: lastOrder?.id || ''
+        })
+      });
+      const ticket = await response.json();
+
+      if (!response.ok) {
+        setNotice(ticket.message || 'Customer-care message could not be sent.');
+        return;
+      }
+
+      setCareTicketId(ticket.id);
+      setCareMessages([{ id: `${ticket.id}-issue`, sender: customer, text }]);
+      setCareChatDraft('');
+      setNotice(`Customer-care ticket ${ticket.id} opened.`);
+      return;
+    }
+
+    const response = await fetch(`${API_URL}/customer-care/tickets/${careTicketId}/replies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: customer, message: text, status: 'in_progress' })
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      setNotice(result.message || 'Customer-care message could not be sent.');
+      return;
+    }
+
+    setCareChatDraft('');
+    loadCareTicket(careTicketId);
   };
 
   if (view === 'auth') {
     const isLogin = authMode === 'login';
+    const isOtp = authMode === 'verify-otp';
+    const isPasswordChange = authMode === 'change-password';
 
     return (
       <div className="app-shell auth-shell">
@@ -345,6 +586,22 @@ function App() {
             <button className={!isLogin ? 'active' : ''} type="button" onClick={() => setAuthMode('register')}>Create account</button>
           </div>
 
+          {isOtp ? (
+            <form className="auth-form" onSubmit={verifyAuthOtp}>
+              <div><p className="eyebrow">Account verification</p><h2>Enter OTP</h2></div>
+              <label>One-time password<input value={authOtp} onChange={(event) => setAuthOtp(event.target.value)} placeholder="6-digit code" required /></label>
+              {authNotice && <p className="notice">{authNotice}</p>}
+              <button type="submit">Verify Account</button>
+            </form>
+          ) : isPasswordChange ? (
+            <form className="auth-form" onSubmit={completeAuthPasswordChange}>
+              <div><p className="eyebrow">First login</p><h2>Create permanent password</h2></div>
+              <label>Personal email<input type="email" value={passwordChange.personalEmail} onChange={(event) => setPasswordChange({ ...passwordChange, personalEmail: event.target.value })} required /></label>
+              <label>New password<input type="password" value={passwordChange.newPassword} onChange={(event) => setPasswordChange({ ...passwordChange, newPassword: event.target.value })} required /></label>
+              {authNotice && <p className="notice">{authNotice}</p>}
+              <button type="submit">Save Password</button>
+            </form>
+          ) : (
           <form className="auth-form" onSubmit={submitAuth}>
             <div>
               <p className="eyebrow">{isLogin ? 'Welcome back' : 'New account'}</p>
@@ -396,11 +653,20 @@ function App() {
               </label>
             )}
 
+            {!isLogin && (
+              <>
+                <label>Phone for SMS<input value={authForm.phone || ''} onChange={(event) => setAuthForm({ ...authForm, phone: event.target.value })} placeholder="+256..." /></label>
+                <label>WhatsApp<input value={authForm.whatsapp || ''} onChange={(event) => setAuthForm({ ...authForm, whatsapp: event.target.value })} placeholder="+256..." /></label>
+                <label>Send OTP via<select value={authForm.deliveryChannel || 'email'} onChange={(event) => setAuthForm({ ...authForm, deliveryChannel: event.target.value })}><option value="email">Email</option><option value="sms">SMS</option><option value="whatsapp">WhatsApp</option></select></label>
+              </>
+            )}
+
             {authNotice && <p className="notice">{authNotice}</p>}
 
             <button type="submit">{isLogin ? 'Sign in' : 'Create account'}</button>
             <button className="ghost-button" type="button" onClick={() => setView('storefront')}>Back to storefront</button>
           </form>
+          )}
         </main>
       </div>
     );
@@ -559,11 +825,11 @@ function App() {
           <main className="success-checkout">
             <span className="success-badge">Paid</span>
             <h1>Order placed successfully</h1>
-            <p>Order {lastOrder?.id} has been sent to the merchant. Product stock will reduce only after the merchant confirms fulfillment.</p>
+            <p>Order {lastOrder?.id} has been sent to the merchant. Chat with the merchant to arrange pickup or delivery details and agree on payment terms. Product stock will reduce only after merchant confirmation.</p>
             <div className="success-grid">
               <span>Total<strong>{currency(lastOrder?.total || 0, selectedCurrency)}</strong></span>
-              <span>Status<strong>{lastOrder?.status || 'paid'}</strong></span>
-              <span>Stock update<strong>Pending merchant confirmation</strong></span>
+              <span>Status<strong>{lastOrder?.status || 'awaiting arrangement'}</strong></span>
+              <span>Next step<strong>Merchant chat and agreement</strong></span>
             </div>
             <button onClick={() => setView('storefront')}>Back to Storefront</button>
           </main>
@@ -592,7 +858,7 @@ function App() {
           <section className="checkout-workspace">
             <div className="secure-row"><span>Shield</span><strong>Secure Checkout</strong><small>Your information is 100% safe and secure</small></div>
             <div className="checkout-steps">
-              {['Cart', 'Delivery', 'Payment', 'Review & Place Order'].map((step, index) => (
+              {['Cart', 'Delivery', 'Chat Terms', 'Send Order'].map((step, index) => (
                 <span className={index < 3 ? 'active' : ''} key={step}>{index + 1} {step}</span>
               ))}
             </div>
@@ -632,33 +898,28 @@ function App() {
             </article>
 
             <article className="checkout-card">
-              <h2>Payment Method</h2>
-              <p>All payments are secure and encrypted</p>
+              <h2>Chat with Merchant</h2>
+              <p>No payment method is collected at checkout. Send the merchant your pickup or delivery request and discuss payment terms directly before fulfillment.</p>
               <div className="payment-grid">
                 <div className="payment-options">
-                  {['Mobile Money', 'Visa / Mastercard', 'Bank Transfer', 'Pay on Delivery'].map((method) => (
-                    <button className={paymentMethod === method ? 'selected' : ''} key={method} onClick={() => setPaymentMethod(method)} type="button">
-                      <strong>{method}</strong><small>{method === 'Mobile Money' ? 'Pay with MTN or Airtel Money' : 'Secure customer payment'}</small>
+                  {['Delivery', 'Pickup', 'Merchant Advice'].map((method) => (
+                    <button className={arrangementMode === method ? 'selected' : ''} key={method} onClick={() => setArrangementMode(method)} type="button">
+                      <strong>{method}</strong><small>{method === 'Delivery' ? 'Ask the merchant to deliver' : method === 'Pickup' ? 'Arrange pickup location and time' : 'Let merchant suggest the best option'}</small>
                     </button>
                   ))}
                 </div>
                 <div className="payment-details">
-                  <h3>{paymentMethod} Details</h3>
-                  {paymentMethod === 'Mobile Money' && (
-                    <>
-                      <label>Select Network<select value={paymentNetwork} onChange={(event) => setPaymentNetwork(event.target.value)}><option>MTN Mobile Money</option><option>Airtel Money</option></select></label>
-                      <label>Phone Number<input value={checkoutPhone} onChange={(event) => setCheckoutPhone(event.target.value)} /></label>
-                    </>
-                  )}
-                  {paymentMethod !== 'Mobile Money' && <p className="payment-note">ERIM will show the secure {paymentMethod.toLowerCase()} instructions before final confirmation.</p>}
-                  <div className="security-note">You will receive a secure confirmation prompt before the merchant receives this order.</div>
+                  <h3>Message to Merchant</h3>
+                  <label>Contact phone<input value={arrangementContact} onChange={(event) => setArrangementContact(event.target.value)} /></label>
+                  <label>Pickup, delivery, and payment terms<textarea value={merchantMessage} onChange={(event) => setMerchantMessage(event.target.value)} /></label>
+                  <div className="security-note">The merchant will receive this order notification and reply from the merchant dashboard chat.</div>
                 </div>
               </div>
             </article>
 
             <div className="checkout-actions">
               <button className="ghost-button" onClick={() => setView('storefront')}>Back to Cart</button>
-              <button onClick={placeOrder}>Continue to Review</button>
+              <button onClick={placeOrder}>Send Order to Merchant</button>
             </div>
           </section>
 
@@ -676,12 +937,12 @@ function App() {
               </div>
               <div className="summary-lines">
                 <span>Subtotal<strong>{currency(cartSubtotal, selectedCurrency)}</strong></span>
-                <span>Delivery Fee<strong>{currency(selectedDelivery.fee, selectedCurrency)}</strong></span>
-                <span className="total">Total<strong>{currency(cartTotal, selectedCurrency)}</strong></span>
+                <span>Estimated Delivery<strong>{currency(selectedDelivery.fee, selectedCurrency)}</strong></span>
+                <span className="total">Estimated Total<strong>{currency(cartTotal, selectedCurrency)}</strong></span>
               </div>
-              <div className="points-card">You will earn {Math.round(cartTotal / 1000)} ERIM Points when you place this order.</div>
+              <div className="points-card">No online payment is collected here. Final delivery or pickup cost and payment terms are agreed with the merchant.</div>
             </div>
-            {['Safe & Secure Payments', 'Easy Returns', '24/7 Customer Support'].map((item) => <div className="checkout-benefit" key={item}><strong>{item}</strong><span>ERIM support is ready before and after purchase</span></div>)}
+            {['Merchant Chat', 'Flexible Pickup or Delivery', 'Customer Support'].map((item) => <div className="checkout-benefit" key={item}><strong>{item}</strong><span>Discuss details before the merchant confirms fulfillment</span></div>)}
           </aside>
         </main>
       </div>
@@ -834,6 +1095,123 @@ function App() {
           <button onClick={checkout} disabled={!cart.length}>Checkout</button>
         </aside>
       </main>
+
+      <div className="floating-commerce-menu">
+        {showFloatingMenu && (
+          <section className="floating-menu-card" aria-label="Quick actions">
+            <button
+              type="button"
+              onClick={() => {
+                setShowMerchantMessenger(true);
+                setShowCareMessenger(false);
+                setShowFloatingMenu(false);
+              }}
+            >
+              <span className="floating-icon">Msg</span>
+              <strong>Merchant Chat</strong>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowCareMessenger(true);
+                setShowMerchantMessenger(false);
+                setShowFloatingMenu(false);
+              }}
+            >
+              <span className="floating-icon care">Care</span>
+              <strong>Customer Care</strong>
+            </button>
+            <button type="button" onClick={() => setNotice('Accio Work tools are coming soon for ERIM partners.')}>
+              <span className="floating-icon accent">A</span>
+              <strong>Accio Work</strong>
+            </button>
+            <button type="button" onClick={() => setNotice('Visual product search will be added in a later ERIM release.')}>
+              <span className="floating-icon lens">Lens</span>
+              <strong>Alibaba Lens</strong>
+            </button>
+            <button type="button" onClick={() => setNotice('Thanks for helping improve ERIM. Survey tools are being prepared.')}>
+              <span className="floating-icon survey">?</span>
+              <strong>Survey</strong>
+            </button>
+          </section>
+        )}
+
+        {showMerchantMessenger && (
+          <section className="merchant-messenger-bubble" aria-label="Chat with merchant">
+            <div className="messenger-head">
+              <div>
+                <strong>{selectedChatShop?.name || 'ERIM Merchant'}</strong>
+                <span>Live merchant chat</span>
+              </div>
+              <button type="button" className="linkish" onClick={() => setShowMerchantMessenger(false)}>Close</button>
+            </div>
+            <div className="messenger-thread">
+              {activeMerchantChat?.messages?.length ? activeMerchantChat.messages.map((message) => (
+                <article className={`messenger-message ${message.sender === (user?.name || 'Guest Customer') ? 'mine' : ''}`} key={message.id}>
+                  <strong>{message.sender}</strong>
+                  <span>{message.text}</span>
+                </article>
+              )) : (
+                <div className="messenger-empty">
+                  <strong>Start a conversation</strong>
+                  <span>Ask the merchant about pickup, delivery, availability, or payment terms.</span>
+                </div>
+              )}
+            </div>
+            <form className="messenger-compose" onSubmit={sendMerchantChatMessage}>
+              <input
+                value={merchantChatDraft}
+                onChange={(event) => setMerchantChatDraft(event.target.value)}
+                placeholder="Message the merchant..."
+              />
+              <button type="submit">Send</button>
+            </form>
+          </section>
+        )}
+
+        {showCareMessenger && (
+          <section className="merchant-messenger-bubble care-messenger-bubble" aria-label="Chat with customer care">
+            <div className="messenger-head care-head">
+              <div>
+                <strong>ERIM Customer Care</strong>
+                <span>{careTicketId ? `Ticket ${careTicketId}` : 'Live support chat'}</span>
+              </div>
+              <button type="button" className="linkish" onClick={() => setShowCareMessenger(false)}>Close</button>
+            </div>
+            <div className="messenger-thread">
+              {careMessages.map((message) => (
+                <article className={`messenger-message ${message.sender === (user?.name || 'Guest Customer') ? 'mine' : ''}`} key={message.id}>
+                  <strong>{message.sender}</strong>
+                  <span>{message.text}</span>
+                </article>
+              ))}
+            </div>
+            <form className="messenger-compose" onSubmit={sendCareChatMessage}>
+              <input
+                value={careChatDraft}
+                onChange={(event) => setCareChatDraft(event.target.value)}
+                placeholder="Message ERIM customer care..."
+              />
+              <button type="submit">Send</button>
+            </form>
+          </section>
+        )}
+
+        <button
+          className="floating-menu-trigger"
+          type="button"
+          onClick={() => {
+            setShowFloatingMenu((current) => !current);
+            if (!showFloatingMenu) {
+              setShowMerchantMessenger(false);
+              setShowCareMessenger(false);
+            }
+          }}
+          aria-label="Open quick menu"
+        >
+          {showFloatingMenu ? 'Close' : 'Chat'}
+        </button>
+      </div>
     </div>
   );
 }

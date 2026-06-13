@@ -150,6 +150,7 @@ function App() {
   const [selectedPlan, setSelectedPlan] = useState(subscriptionPlans[2]);
   const [paymentForm, setPaymentForm] = useState({ method: 'MTN Mobile Money', phone: '+256 7' });
   const [verification, setVerification] = useState({ phoneOtp: '', emailOtp: '' });
+  const [passwordChange, setPasswordChange] = useState({ user: null, currentPassword: '', newPassword: '', personalEmail: '' });
   const [reviewStatus, setReviewStatus] = useState('Pending Approval');
   const [overview, setOverview] = useState(null);
   const [activePage, setActivePage] = useState('dashboard');
@@ -163,10 +164,10 @@ function App() {
   const [showStoreMenu, setShowStoreMenu] = useState(false);
   const [showHelpCenter, setShowHelpCenter] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
-  const [chatMessages, setChatMessages] = useState([
-    { id: 'msg-1', sender: 'ERIM Support', text: 'Welcome back. Your annual merchant plan is active.' },
-    { id: 'msg-2', sender: 'ERIM Support', text: 'You have 1 fulfilled order and no urgent support tickets.' }
-  ]);
+  const [merchantChatThreads, setMerchantChatThreads] = useState([]);
+  const [activeMerchantChatId, setActiveMerchantChatId] = useState('');
+  const [selectedOrderChatId, setSelectedOrderChatId] = useState('');
+  const [orderChatDraft, setOrderChatDraft] = useState('');
 
   const loadOverview = () => {
     fetch(`${API_URL}/merchant/overview?shopId=shop-aurora`)
@@ -175,15 +176,52 @@ function App() {
       .catch(() => setNotice('Backend is offline. Start it with npm run dev:backend.'));
   };
 
+  const loadMerchantChats = (shopId = overview?.shop?.id || 'shop-aurora') => {
+    fetch(`${API_URL}/merchant/chats?shopId=${shopId}`)
+      .then((response) => response.json())
+      .then((threads) => {
+        setMerchantChatThreads(threads);
+        if (!activeMerchantChatId && threads[0]) {
+          setActiveMerchantChatId(threads[0].id);
+        }
+      })
+      .catch(() => setNotice('Merchant chat is temporarily unavailable.'));
+  };
+
   useEffect(loadOverview, []);
+
+  useEffect(() => {
+    loadMerchantChats();
+  }, []);
+
+  useEffect(() => {
+    if (!showChat) return undefined;
+
+    loadMerchantChats();
+    const timer = window.setInterval(() => loadMerchantChats(), 3000);
+
+    return () => window.clearInterval(timer);
+  }, [showChat, overview?.shop?.id, activeMerchantChatId]);
 
   const products = overview?.products || [];
   const orders = overview?.orders || [];
   const metrics = overview?.metrics || {};
   const lowStockProducts = useMemo(() => products.filter((item) => item.stock < 12), [products]);
+  const arrangementOrders = useMemo(() => orders.filter((order) => order.status === 'awaiting_arrangement'), [orders]);
+  const activeMerchantChat = merchantChatThreads.find((thread) => thread.id === activeMerchantChatId) || merchantChatThreads[0];
   const posTotal = posCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const rentDue = rentPaid ? 0 : selectedPlan.amount;
   const notifications = [
+    ...arrangementOrders.map((order) => ({
+      id: `order-note-${order.id}`,
+      title: 'New storefront order',
+      body: `${order.customer} wants to arrange ${order.arrangement?.method || 'delivery/pickup'} and payment terms for ${order.id}.`
+    })),
+    ...merchantChatThreads.slice(0, 3).map((thread) => ({
+      id: `chat-note-${thread.id}`,
+      title: 'Customer message',
+      body: `${thread.customer} sent ${thread.messages.length} message${thread.messages.length === 1 ? '' : 's'} about ${thread.shop?.name || 'your store'}.`
+    })),
     { id: 'note-1', title: 'Subscription active', body: `${selectedPlan.name} is active. Renewal date: 12 March 2027.` },
     { id: 'note-2', title: 'Inventory healthy', body: `${lowStockProducts.length} low-stock products need attention.` },
     { id: 'note-3', title: 'Payout currency', body: 'All merchant balances are settled in Ugx.' }
@@ -240,6 +278,13 @@ function App() {
       return;
     }
 
+    if (result.requiresPasswordChange) {
+      setPasswordChange({ user: result.user, currentPassword: merchantForm.password, newPassword: '', personalEmail: result.user.personalEmail || result.user.email || '' });
+      setNotice('Temporary password accepted. Create a permanent password and register your personal email.');
+      setMerchantStage('password-change');
+      return;
+    }
+
     setMerchant({
       name: result.user.name,
       businessName: overview?.shop?.name || 'Erim Fashion Store',
@@ -251,6 +296,39 @@ function App() {
     setRentPaid(true);
     setMerchantStage('dashboard');
     setNotice(`Welcome back, ${result.user.name}.`);
+  };
+
+  const completeMerchantPasswordChange = async (event) => {
+    event.preventDefault();
+    const response = await fetch(`${API_URL}/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: passwordChange.user?.id,
+        currentPassword: passwordChange.currentPassword,
+        newPassword: passwordChange.newPassword,
+        personalEmail: passwordChange.personalEmail
+      })
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      setNotice(result.message || 'Password change failed.');
+      return;
+    }
+
+    setMerchant({
+      name: result.user.name,
+      businessName: overview?.shop?.name || 'Erim Fashion Store',
+      email: result.user.email,
+      phone: '+256 700 000 000',
+      status: 'Premium Merchant'
+    });
+    setPasswordChange({ user: null, currentPassword: '', newPassword: '', personalEmail: '' });
+    setSelectedPlan(subscriptionPlans[2]);
+    setRentPaid(true);
+    setMerchantStage('dashboard');
+    setNotice(result.message);
   };
 
   const verifyMerchant = (event) => {
@@ -297,18 +375,52 @@ function App() {
     setMerchantStage('live');
   };
 
-  const sendChatMessage = (event) => {
+  const sendChatMessage = async (event) => {
     event.preventDefault();
     const text = chatDraft.trim();
 
-    if (!text) return;
+    if (!text || !activeMerchantChat) return;
 
-    setChatMessages((messages) => [
-      ...messages,
-      { id: `msg-${Date.now()}`, sender: 'You', text },
-      { id: `reply-${Date.now()}`, sender: 'ERIM Support', text: 'Thanks. Our merchant support team has received your message.' }
-    ]);
+    await fetch(`${API_URL}/merchant/chats/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chatId: activeMerchantChat.id,
+        shopId: activeMerchantChat.shopId || overview?.shop?.id || 'shop-aurora',
+        customer: activeMerchantChat.customer,
+        sender: overview?.shop?.name || merchant?.businessName || 'Merchant',
+        text
+      })
+    });
+
     setChatDraft('');
+    loadMerchantChats(activeMerchantChat.shopId);
+  };
+
+  const openOrderChat = (orderId) => {
+    setSelectedOrderChatId(orderId);
+    setActivePage('orders');
+    setShowNotifications(false);
+    setShowChat(false);
+    setShowStoreMenu(false);
+    setShowHelpCenter(false);
+  };
+
+  const sendOrderChatMessage = async (event) => {
+    event.preventDefault();
+    const text = orderChatDraft.trim();
+
+    if (!selectedOrderChatId || !text) return;
+
+    await fetch(`${API_URL}/orders/${selectedOrderChatId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sender: overview?.shop?.name || 'Merchant', text, status: 'arranging_terms' })
+    });
+
+    setOrderChatDraft('');
+    setNotice(`Reply sent for order ${selectedOrderChatId}.`);
+    loadOverview();
   };
 
   const logoutMerchant = () => {
@@ -382,6 +494,22 @@ function App() {
         </form>,
         'Merchant access.',
         'Sign in if you already have an ERIM merchant account. Demo seller: seller@erim.test / pass123.'
+      );
+    }
+
+    if (merchantStage === 'password-change') {
+      return renderOnboardingShell(
+        <form className="onboarding-card auth-card" onSubmit={completeMerchantPasswordChange}>
+          <div>
+            <p className="eyebrow">First login security</p>
+            <h2>Create permanent password</h2>
+          </div>
+          <label>Personal Email<input type="email" value={passwordChange.personalEmail} onChange={(event) => setPasswordChange({ ...passwordChange, personalEmail: event.target.value })} required /></label>
+          <label>New Password<input type="password" value={passwordChange.newPassword} onChange={(event) => setPasswordChange({ ...passwordChange, newPassword: event.target.value })} required /></label>
+          <button type="submit">Save Password & Continue</button>
+        </form>,
+        'Secure your merchant account.',
+        'Admin-created merchant accounts use a temporary password only once. Set your private password and register a personal email before dashboard access.'
       );
     }
 
@@ -791,20 +919,54 @@ function App() {
   );
 
   const renderOrders = () => (
-    <section className="panel">
-      <div className="panel-head"><h2>Orders</h2><span>{orders.length} open records</span></div>
-      <div className="table">
-        <div className="table-head"><span>Order</span><span>Customer</span><span>Total</span><span>Status</span><span>Action</span></div>
-        {orders.map((order) => (
-          <div className="table-row" key={order.id}>
-            <span>{order.id}<small>{order.lineItems?.map((line) => `${line.name} x ${line.quantity}`).join(', ') || `${order.items} item(s)`}</small></span>
-            <span>{order.customer}</span>
-            <span>{money(order.total)}</span>
-            <mark className={order.status}>{order.status}</mark>
-            <button onClick={() => updateOrder(order.id, 'fulfilled')} disabled={order.status === 'fulfilled'}>{order.status === 'fulfilled' ? 'Fulfilled' : 'Fulfill'}</button>
-          </div>
-        ))}
+    <section className="orders-workspace">
+      <div className="panel">
+        <div className="panel-head"><h2>Orders</h2><span>{orders.length} open records</span></div>
+        <div className="table">
+          <div className="table-head"><span>Order</span><span>Customer</span><span>Total</span><span>Status</span><span>Action</span></div>
+          {orders.map((order) => (
+            <div className="table-row" key={order.id}>
+              <span>{order.id}<small>{order.lineItems?.map((line) => `${line.name} x ${line.quantity}`).join(', ') || `${order.items} item(s)`}</small></span>
+              <span>{order.customer}<small>{order.arrangement?.method ? `${order.arrangement.method}: ${order.arrangement.contact}` : 'POS or legacy order'}</small></span>
+              <span>{money(order.total)}</span>
+              <mark className={order.status}>{order.status.replace('_', ' ')}</mark>
+              <span className="order-actions">
+                <button onClick={() => openOrderChat(order.id)}>Chat</button>
+                <button onClick={() => updateOrder(order.id, 'fulfilled')} disabled={order.status === 'fulfilled'}>{order.status === 'fulfilled' ? 'Fulfilled' : 'Fulfill'}</button>
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
+      <aside className="panel order-chat-panel">
+        <h2>Customer Order Chat</h2>
+        {selectedOrderChatId ? (() => {
+          const order = orders.find((item) => item.id === selectedOrderChatId);
+          if (!order) return <p>Select an order to chat.</p>;
+          return (
+            <>
+              <div className="arrangement-card">
+                <strong>{order.customer}</strong>
+                <span>{order.id} - {money(order.total)}</span>
+                <p>{order.arrangement?.details || 'No arrangement note yet.'}</p>
+                <small>{order.arrangement?.method || 'Arrange pickup/delivery'} - {order.arrangement?.contact || 'No contact provided'}</small>
+              </div>
+              <div className="order-chat-thread">
+                {(order.messages || []).map((message) => (
+                  <article className={message.sender === (overview?.shop?.name || 'Merchant') ? 'mine' : ''} key={message.id}>
+                    <strong>{message.sender}</strong>
+                    <span>{message.text}</span>
+                  </article>
+                ))}
+              </div>
+              <form className="chat-compose" onSubmit={sendOrderChatMessage}>
+                <input value={orderChatDraft} onChange={(event) => setOrderChatDraft(event.target.value)} placeholder="Reply about pickup, delivery, or payment terms" />
+                <button type="submit">Send</button>
+              </form>
+            </>
+          );
+        })() : <p>Select an order and open chat to discuss pickup, delivery, and payment terms.</p>}
+      </aside>
     </section>
   );
 
@@ -995,6 +1157,19 @@ function App() {
               <article className="notification-item" key={item.id}>
                 <strong>{item.title}</strong>
                 <span>{item.body}</span>
+                {item.id.startsWith('order-note-') && <button className="link-button" onClick={() => openOrderChat(item.id.replace('order-note-', ''))}>Open order chat</button>}
+                {item.id.startsWith('chat-note-') && (
+                  <button
+                    className="link-button"
+                    onClick={() => {
+                      setActiveMerchantChatId(item.id.replace('chat-note-', ''));
+                      setShowChat(true);
+                      setShowNotifications(false);
+                    }}
+                  >
+                    Open customer chat
+                  </button>
+                )}
               </article>
             ))}
           </section>
@@ -1006,17 +1181,42 @@ function App() {
               <h2>Merchant Chat</h2>
               <button className="link-button" onClick={() => setShowChat(false)}>Close</button>
             </div>
-            <div className="chat-thread">
-              {chatMessages.map((message) => (
-                <article className={`chat-message ${message.sender === 'You' ? 'mine' : ''}`} key={message.id}>
-                  <strong>{message.sender}</strong>
-                  <span>{message.text}</span>
-                </article>
-              ))}
+            <div className="merchant-chat-layout">
+              <div className="chat-thread-list">
+                {merchantChatThreads.length ? merchantChatThreads.map((thread) => (
+                  <button
+                    className={thread.id === activeMerchantChat?.id ? 'selected' : ''}
+                    key={thread.id}
+                    type="button"
+                    onClick={() => setActiveMerchantChatId(thread.id)}
+                  >
+                    <strong>{thread.customer}</strong>
+                    <span>{thread.messages.at(-1)?.text || 'No messages yet'}</span>
+                  </button>
+                )) : (
+                  <div className="chat-empty">
+                    <strong>No customer chats yet</strong>
+                    <span>Customer storefront messages will appear here in real time.</span>
+                  </div>
+                )}
+              </div>
+              <div className="chat-thread">
+                {activeMerchantChat?.messages?.length ? activeMerchantChat.messages.map((message) => (
+                  <article className={`chat-message ${message.sender === (overview?.shop?.name || merchant?.businessName || 'Merchant') ? 'mine' : ''}`} key={message.id}>
+                    <strong>{message.sender}</strong>
+                    <span>{message.text}</span>
+                  </article>
+                )) : (
+                  <div className="chat-empty">
+                    <strong>Select a customer</strong>
+                    <span>Reply to questions about pickup, delivery, availability, and payment terms.</span>
+                  </div>
+                )}
+              </div>
             </div>
             <form className="chat-compose" onSubmit={sendChatMessage}>
-              <input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Type a message to ERIM support" />
-              <button type="submit">Send</button>
+              <input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Reply to customer..." disabled={!activeMerchantChat} />
+              <button type="submit" disabled={!activeMerchantChat}>Send</button>
             </form>
           </section>
         )}
