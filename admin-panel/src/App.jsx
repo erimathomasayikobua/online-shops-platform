@@ -49,7 +49,7 @@ function App() {
     const saved = localStorage.getItem('erimAdminAuth');
     return saved ? JSON.parse(saved) : null;
   });
-  const [authForm, setAuthForm] = useState({ email: 'admin@erim.test', password: 'pass123' });
+  const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [overview, setOverview] = useState(null);
   const [activePage, setActivePage] = useState('dashboard');
   const [query, setQuery] = useState('');
@@ -396,13 +396,13 @@ function App() {
         <form className="inline-form" onSubmit={createUser}>
           <input placeholder="Full name" value={userForm.name} onChange={(event) => setUserForm({ ...userForm, name: event.target.value })} required />
           <input placeholder="Email" type="email" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} required />
-          <input placeholder="SMS phone" value={userForm.phone} onChange={(event) => setUserForm({ ...userForm, phone: event.target.value })} />
+          <input placeholder="Contact phone" value={userForm.phone} onChange={(event) => setUserForm({ ...userForm, phone: event.target.value })} />
           <input placeholder="WhatsApp" value={userForm.whatsapp} onChange={(event) => setUserForm({ ...userForm, whatsapp: event.target.value })} />
           <select value={userForm.role} onChange={(event) => setUserForm({ ...userForm, role: event.target.value, adminRole: event.target.value === 'care' ? 'Support Agent' : event.target.value === 'admin' ? 'Admin' : '' })}>
             <option value="customer">Customer</option><option value="care">Customer Care Staff</option><option value="seller">Merchant User</option><option value="admin">Admin</option>
           </select>
           <select value={userForm.deliveryChannel} onChange={(event) => setUserForm({ ...userForm, deliveryChannel: event.target.value })}>
-            <option value="email">Email password</option><option value="sms">SMS password</option><option value="whatsapp">WhatsApp password</option>
+            <option value="email">Email password</option><option value="whatsapp">WhatsApp password</option>
           </select>
           <button type="submit">Create Account</button>
         </form>
@@ -651,11 +651,6 @@ function App() {
             <p className="auth-eyebrow">ERIM Super Admin</p>
             <h1>Full platform control for ERIM operations.</h1>
             <p>Manage accounts, merchants, products, orders, subscriptions, finance, support, content, logistics, compliance, system settings, and automation.</p>
-          </div>
-          <div className="auth-demo-card">
-            <strong>Demo super admin</strong>
-            <span>admin@erim.test</span>
-            <small>Password: pass123</small>
           </div>
         </section>
         <main className="auth-form-panel">

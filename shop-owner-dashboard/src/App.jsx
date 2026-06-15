@@ -53,15 +53,15 @@ const miniPages = {
   reviews: { title: 'Reviews', action: 'Reply to reviews', rows: ['4.7 / 5 customer satisfaction', '12 reviews pending reply', 'Top feedback: delivery speed'] },
   discounts: { title: 'Discounts', action: 'Create discount', rows: ['Weekend Deal - 12% off', 'New Buyer - UGX 10,000 off', 'Clearance - 20% off'] },
   coupons: { title: 'Coupons', action: 'Generate coupons', rows: ['ERIMWELCOME', 'FASHION10', 'FREESHIPUG'] },
-  campaigns: { title: 'Campaigns', action: 'Launch campaign', rows: ['Back to School Promo', 'Payday Fashion Push', 'Returning Customer SMS'] },
+  campaigns: { title: 'Campaigns', action: 'Launch campaign', rows: ['Back to School Promo', 'Payday Fashion Push', 'Returning Customer WhatsApp'] },
   banners: { title: 'Banner Management', action: 'Upload banner', rows: ['Homepage hero active', 'Mobile app banner scheduled', 'Marketplace strip draft'] },
   analytics: { title: 'Sales Analytics', action: 'Download CSV', rows: ['Website: 60%', 'Mobile app: 25%', 'Marketplace: 10%', 'Others: 5%'] },
-  traffic: { title: 'Traffic & Visitors', action: 'View sources', rows: ['12,842 visitors', 'Organic search: 38%', 'Social: 24%', 'Direct: 21%'] },
-  reports: { title: 'Reports', action: 'Create report', rows: ['Weekly sales report', 'Inventory valuation', 'Rent and payout statement'] },
+  traffic: { title: 'Traffic & Visitors', action: 'Download CSV', rows: ['12,842 visitors', 'Organic search: 38%', 'Social: 24%', 'Direct: 21%'] },
+  reports: { title: 'Reports', action: 'Generate weekly reports', rows: ['Weekly sales report', 'Inventory valuation', 'Rent and payout statement', 'Subscription value report'] },
   profile: { title: 'Store Profile', action: 'Save profile', rows: ['Erim Fashion Store', 'Verified Merchant', 'Kampala, Uganda'] },
   shipping: { title: 'Shipping', action: 'Add zone', rows: ['Kampala same-day', 'Upcountry courier', 'Pickup enabled'] },
-  payments: { title: 'Payments', action: 'Connect wallet', rows: ['Base currency: Ugandan shillings', 'Mobile money enabled', 'Next payout: pending rent clearance'] },
-  staff: { title: 'Staff Management', action: 'Invite staff', rows: ['Maya Chen - Owner', 'Amina Otieno - Inventory', 'Care Agent - Support'] },
+  payments: { title: 'Payments', action: 'Add payment method', rows: ['Base currency: Ugandan shillings', 'MTN Mobile Money wallet active', 'Airtel Money wallet active', 'Bank account pending verification'] },
+  staff: { title: 'Staff Management', action: 'Invite staff', rows: ['Maya Chen - Owner: full privileges', 'Amina Otieno - Inventory: products and stock', 'Care Agent - Support: orders, chats, and returns'] },
   settings: { title: 'Settings', action: 'Update settings', rows: ['Notifications on', 'Two-step approval on', 'Low stock threshold: 12'] }
 };
 
@@ -111,6 +111,20 @@ const merchantFaqs = [
 
 const onboardingSteps = ['Account', 'Verify', 'Business', 'Plan', 'Payment', 'Setup', 'Product', 'Review'];
 
+const buildFeatureState = () => Object.fromEntries(
+  Object.entries(miniPages).map(([key, page]) => [
+    key,
+    {
+      draft: '',
+      rows: page.rows.map((label, index) => ({
+        id: `${key}-${index}`,
+        label,
+        status: key === 'returns' && label.toLowerCase().includes('open') ? 'review' : 'active'
+      }))
+    }
+  ])
+);
+
 function App() {
   const [merchantStage, setMerchantStage] = useState('landing');
   const [merchant, setMerchant] = useState(null);
@@ -118,8 +132,8 @@ function App() {
     fullName: '',
     businessName: '',
     phone: '',
-    email: 'seller@erim.test',
-    password: 'pass123'
+    email: '',
+    password: ''
   });
   const [businessForm, setBusinessForm] = useState({
     shopName: '',
@@ -168,6 +182,14 @@ function App() {
   const [activeMerchantChatId, setActiveMerchantChatId] = useState('');
   const [selectedOrderChatId, setSelectedOrderChatId] = useState('');
   const [orderChatDraft, setOrderChatDraft] = useState('');
+  const [returnPolicy, setReturnPolicy] = useState({
+    windowDays: 7,
+    conditions: 'Items must be unused, in original packaging, and include the ERIM order reference.',
+    refundMethod: 'Mobile money refund or store credit after merchant inspection.',
+    returnShipping: 'Customer pays return delivery unless the item is wrong, damaged, or not as described.',
+    exclusions: 'Opened personal-care items, perishable goods, custom-made products, and clearance items.'
+  });
+  const [merchantFeatureState, setMerchantFeatureState] = useState(buildFeatureState);
 
   const loadOverview = () => {
     fetch(`${API_URL}/merchant/overview?shopId=shop-aurora`)
@@ -189,6 +211,23 @@ function App() {
   };
 
   useEffect(loadOverview, []);
+
+  useEffect(() => {
+    if (!overview?.shop) return;
+
+    setSetupForm((current) => ({
+      ...current,
+      phone: current.phone || overview.shop.contactPhone || '',
+      whatsapp: current.whatsapp || overview.shop.whatsapp || '',
+      email: current.email || overview.shop.email || ''
+    }));
+    if (overview.shop.returnPolicy) {
+      setReturnPolicy((current) => ({
+        ...current,
+        ...overview.shop.returnPolicy
+      }));
+    }
+  }, [overview?.shop?.id]);
 
   useEffect(() => {
     loadMerchantChats();
@@ -355,8 +394,136 @@ function App() {
     setMerchantStage('success');
   };
 
-  const saveSetupWizard = (event) => {
+  const saveMerchantContact = async (event) => {
     event.preventDefault();
+    const response = await fetch(`${API_URL}/shops/${overview?.shop?.id || 'shop-aurora'}/contact`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contactPhone: setupForm.phone,
+        whatsapp: setupForm.whatsapp,
+        email: setupForm.email,
+        deliveryRegions: setupForm.deliveryRegions,
+        deliveryCharges: setupForm.deliveryCharges,
+        pickupAvailable: setupForm.pickupAvailable,
+        actor: merchant?.name || overview?.shop?.owner || 'Merchant'
+      })
+    });
+    const updated = await response.json();
+
+    if (!response.ok) {
+      setNotice(updated.message || 'Contact details could not be saved.');
+      return null;
+    }
+
+    setNotice(`Customer checkout contact updated for ${updated.name}.`);
+    loadOverview();
+    return updated;
+  };
+
+  const saveReturnPolicy = async (event) => {
+    event.preventDefault();
+    const response = await fetch(`${API_URL}/shops/${overview?.shop?.id || 'shop-aurora'}/policies`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        returnPolicy,
+        actor: merchant?.name || overview?.shop?.owner || 'Merchant'
+      })
+    });
+    const updated = await response.json();
+
+    if (!response.ok) {
+      setNotice(updated.message || 'Return policy could not be saved.');
+      return;
+    }
+
+    setReturnPolicy(updated.returnPolicy);
+    setNotice('Return policy is active on the storefront checkout.');
+    loadOverview();
+  };
+
+  const updateFeatureDraft = (key, value) => {
+    setMerchantFeatureState((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        draft: value
+      }
+    }));
+  };
+
+  const addFeatureRow = (key) => {
+    const page = miniPages[key];
+    const draft = merchantFeatureState[key]?.draft?.trim();
+    const label = draft || `${page.action} - ${new Date().toLocaleDateString('en-UG')}`;
+
+    setMerchantFeatureState((current) => ({
+      ...current,
+      [key]: {
+        draft: '',
+        rows: [
+          { id: `${key}-${Date.now()}`, label, status: 'active' },
+          ...(current[key]?.rows || [])
+        ]
+      }
+    }));
+    setNotice(`${page.title} updated and active.`);
+  };
+
+  const setFeatureStatus = (key, rowId, status) => {
+    setMerchantFeatureState((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        rows: current[key].rows.map((row) => (row.id === rowId ? { ...row, status } : row))
+      }
+    }));
+  };
+
+  const removeFeatureRow = (key, rowId) => {
+    setMerchantFeatureState((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        rows: current[key].rows.filter((row) => row.id !== rowId)
+      }
+    }));
+    setNotice(`${miniPages[key].title} item removed.`);
+  };
+
+  const downloadFeatureCsv = (key) => {
+    const page = miniPages[key];
+    const rows = merchantFeatureState[key]?.rows || [];
+    const csv = [
+      ['Section', 'Item', 'Status'],
+      ...rows.map((row) => [page.title, row.label, row.status])
+    ].map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `erim-${key}-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setNotice(`${page.title} CSV downloaded.`);
+  };
+
+  const handleFeatureAction = (key) => {
+    if (['analytics', 'traffic'].includes(key)) {
+      downloadFeatureCsv(key);
+      return;
+    }
+    if (key === 'reports') {
+      addFeatureRow(key);
+      setNotice('Weekly sales, inventory, rent, payment, and subscription reports generated.');
+      return;
+    }
+    addFeatureRow(key);
+  };
+
+  const saveSetupWizard = async (event) => {
+    const updated = await saveMerchantContact(event);
+    if (!updated) return;
     setMerchantStage('first-product');
   };
 
@@ -493,7 +660,7 @@ function App() {
           <button type="button" className="light-button" onClick={() => setMerchantStage('account')}>Create Merchant Account</button>
         </form>,
         'Merchant access.',
-        'Sign in if you already have an ERIM merchant account. Demo seller: seller@erim.test / pass123.'
+        'Sign in if you already have an ERIM merchant account.'
       );
     }
 
@@ -540,7 +707,7 @@ function App() {
             <h2>Verify Account</h2>
           </div>
           <div className="verification-grid">
-            <label>Phone OTP<input value={verification.phoneOtp} onChange={(event) => setVerification({ ...verification, phoneOtp: event.target.value })} placeholder="SMS code" required /></label>
+            <label>Phone / WhatsApp OTP<input value={verification.phoneOtp} onChange={(event) => setVerification({ ...verification, phoneOtp: event.target.value })} placeholder="OTP code" required /></label>
             <label>Email OTP<input value={verification.emailOtp} onChange={(event) => setVerification({ ...verification, emailOtp: event.target.value })} placeholder="Email code" required /></label>
           </div>
           <p className="subtle">OTP sent to {merchantForm.phone || 'your phone'} and {merchantForm.email || 'your email'}.</p>
@@ -1046,13 +1213,83 @@ function App() {
     </section>
   );
 
+  const renderStoreProfile = () => (
+    <section className="split-grid">
+      <form className="panel" onSubmit={saveMerchantContact}>
+        <div className="panel-head"><h2>Store Contact Details</h2><button type="submit">Save contacts</button></div>
+        <label>Customer Phone Number<input value={setupForm.phone} onChange={(event) => setSetupForm({ ...setupForm, phone: event.target.value })} placeholder="+256 7XX XXX XXX" required /></label>
+        <label>WhatsApp Number<input value={setupForm.whatsapp} onChange={(event) => setSetupForm({ ...setupForm, whatsapp: event.target.value })} placeholder="+256 7XX XXX XXX" required /></label>
+        <label>Email<input type="email" value={setupForm.email} onChange={(event) => setSetupForm({ ...setupForm, email: event.target.value })} required /></label>
+        <label>Delivery Regions<input value={setupForm.deliveryRegions} onChange={(event) => setSetupForm({ ...setupForm, deliveryRegions: event.target.value })} /></label>
+        <label>Delivery Charges (UGX)<input type="number" value={setupForm.deliveryCharges} onChange={(event) => setSetupForm({ ...setupForm, deliveryCharges: event.target.value })} /></label>
+        <label>Pickup Available<select value={setupForm.pickupAvailable} onChange={(event) => setSetupForm({ ...setupForm, pickupAvailable: event.target.value })}><option>Yes</option><option>No</option></select></label>
+      </form>
+      <article className="panel">
+        <h2>Checkout Preview</h2>
+        <div className="settings-list">
+          <div className="settings-row"><span><strong>Merchant phone</strong><small>{setupForm.phone || overview?.shop?.contactPhone || 'Not set'}</small></span></div>
+          <div className="settings-row"><span><strong>WhatsApp</strong><small>{setupForm.whatsapp || overview?.shop?.whatsapp || 'Not set'}</small></span></div>
+          <div className="settings-row"><span><strong>Customer email</strong><small>{setupForm.email || overview?.shop?.email || 'Not set'}</small></span></div>
+          <div className="settings-row"><span><strong>Visible at checkout</strong><small>Customers can open ERIM chat or WhatsApp from the checkout zone.</small></span></div>
+        </div>
+      </article>
+    </section>
+  );
+
+  const renderReturns = () => (
+    <section className="split-grid">
+      <form className="panel policy-form" onSubmit={saveReturnPolicy}>
+        <div className="panel-head"><h2>Return Policy</h2><button type="submit">Publish policy</button></div>
+        <label>Return Window (days)<input type="number" min="1" value={returnPolicy.windowDays} onChange={(event) => setReturnPolicy({ ...returnPolicy, windowDays: event.target.value })} required /></label>
+        <label>Return Conditions<textarea value={returnPolicy.conditions} onChange={(event) => setReturnPolicy({ ...returnPolicy, conditions: event.target.value })} required /></label>
+        <label>Refund Method<input value={returnPolicy.refundMethod} onChange={(event) => setReturnPolicy({ ...returnPolicy, refundMethod: event.target.value })} required /></label>
+        <label>Return Delivery Responsibility<textarea value={returnPolicy.returnShipping} onChange={(event) => setReturnPolicy({ ...returnPolicy, returnShipping: event.target.value })} required /></label>
+        <label>Excluded Items<textarea value={returnPolicy.exclusions} onChange={(event) => setReturnPolicy({ ...returnPolicy, exclusions: event.target.value })} /></label>
+      </form>
+      <article className="panel policy-preview">
+        <div className="panel-head"><h2>Storefront Preview</h2><span>Visible at checkout</span></div>
+        <div className="policy-card">
+          <span>{returnPolicy.windowDays || 7}-day return window</span>
+          <strong>{returnPolicy.conditions}</strong>
+          <p>{returnPolicy.refundMethod}</p>
+          <small>{returnPolicy.returnShipping}</small>
+        </div>
+        <div className="settings-list">
+          {(merchantFeatureState.returns?.rows || []).map((row) => (
+            <div className="settings-row feature-row" key={row.id}>
+              <span><strong>{row.label}</strong><small>Status: {row.status}</small></span>
+              <div className="feature-actions">
+                <button className="light-button" type="button" onClick={() => setFeatureStatus('returns', row.id, 'approved')}>Approve</button>
+                <button className="light-button" type="button" onClick={() => setFeatureStatus('returns', row.id, 'rejected')}>Reject</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </article>
+    </section>
+  );
+
   const renderMiniPage = (key) => {
     const page = miniPages[key];
+    const pageState = merchantFeatureState[key] || { rows: [], draft: '' };
     return (
       <section className="panel page-card">
-        <div className="panel-head"><h2>{page.title}</h2><button>{page.action}</button></div>
+        <div className="panel-head"><h2>{page.title}</h2><button type="button" onClick={() => handleFeatureAction(key)}>{page.action}</button></div>
+        <div className="feature-form">
+          <input value={pageState.draft} onChange={(event) => updateFeatureDraft(key, event.target.value)} placeholder={`Add ${page.title.toLowerCase()} item`} />
+          <button type="button" onClick={() => addFeatureRow(key)}>Add</button>
+        </div>
         <div className="settings-list">
-          {page.rows.map((row) => <div className="settings-row" key={row}>{row}<button className="light-button">Manage</button></div>)}
+          {pageState.rows.map((row) => (
+            <div className="settings-row feature-row" key={row.id}>
+              <span><strong>{row.label}</strong><small>Status: {row.status}</small></span>
+              <div className="feature-actions">
+                <button className="light-button" type="button" onClick={() => setFeatureStatus(key, row.id, row.status === 'active' ? 'paused' : 'active')}>{row.status === 'active' ? 'Pause' : 'Activate'}</button>
+                <button className="light-button" type="button" onClick={() => setFeatureStatus(key, row.id, 'completed')}>Complete</button>
+                <button className="light-button danger-light" type="button" onClick={() => removeFeatureRow(key, row.id)}>Remove</button>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
     );
@@ -1062,8 +1299,11 @@ function App() {
     dashboard: renderDashboard,
     products: renderProducts,
     orders: renderOrders,
+    returns: renderReturns,
     pos: renderPos,
-    rent: renderRent
+    rent: renderRent,
+    profile: renderStoreProfile,
+    settings: renderStoreProfile
   }[activePage] || (() => renderMiniPage(activePage));
 
   if (merchantStage !== 'dashboard') {

@@ -104,6 +104,16 @@ const state = {
       orders: 348,
       revenue: 244150000,
       location: 'Nairobi',
+      contactPhone: '+256 701 222 333',
+      whatsapp: '+256 701 222 333',
+      email: 'aurora@erim.test',
+      returnPolicy: {
+        windowDays: 7,
+        conditions: 'Items must be unused, in original packaging, and include the ERIM order reference.',
+        refundMethod: 'Mobile money refund or store credit after merchant inspection.',
+        returnShipping: 'Customer pays return delivery unless the item is wrong, damaged, or not as described.',
+        exclusions: 'Opened personal-care items, perishable goods, custom-made products, and clearance items.'
+      },
       description: 'Modern kitchenware, bedding, and home accents for small urban spaces.'
     },
     {
@@ -117,6 +127,16 @@ const state = {
       orders: 215,
       revenue: 145920000,
       location: 'Kampala',
+      contactPhone: '+256 702 444 555',
+      whatsapp: '+256 702 444 555',
+      email: 'kitenge@erim.test',
+      returnPolicy: {
+        windowDays: 5,
+        conditions: 'Fashion items must be unworn, unwashed, and returned with tags attached.',
+        refundMethod: 'Exchange, store credit, or mobile money refund where approved.',
+        returnShipping: 'Customer pays return delivery unless the merchant sent the wrong size or item.',
+        exclusions: 'Custom measurements, altered garments, intimate wear, and sale-final items.'
+      },
       description: 'Made-to-order apparel, bags, and accessories from independent designers.'
     },
     {
@@ -130,6 +150,16 @@ const state = {
       orders: 501,
       revenue: 459420000,
       location: 'Dar es Salaam',
+      contactPhone: '+255 713 555 777',
+      whatsapp: '+255 713 555 777',
+      email: 'techlane@erim.test',
+      returnPolicy: {
+        windowDays: 7,
+        conditions: 'Electronics must include packaging, accessories, serial numbers, and pass merchant inspection.',
+        refundMethod: 'Replacement, repair, store credit, or refund after inspection.',
+        returnShipping: 'Merchant covers returns for verified defects reported within the policy window.',
+        exclusions: 'Water damage, misuse, missing accessories, and opened consumable accessories.'
+      },
       description: 'Phones, accessories, and repair kits from verified regional suppliers.'
     }
   ],
@@ -391,7 +421,7 @@ const state = {
       { id: 'set-mtn', name: 'MTN Mobile Money gateway', value: 'Enabled', status: 'active' },
       { id: 'set-airtel', name: 'Airtel Money gateway', value: 'Enabled', status: 'active' },
       { id: 'set-email', name: 'Email service', value: 'Enabled', status: 'active' },
-      { id: 'set-sms', name: 'SMS service', value: 'Enabled', status: 'active' }
+      { id: 'set-whatsapp', name: 'WhatsApp service', value: 'Enabled', status: 'active' }
     ],
     aiAutomation: [
       { id: 'ai-review', name: 'Fake review detection', coverage: 'Reviews', status: 'monitoring' },
@@ -418,6 +448,7 @@ const money = (value) => Number(value.toFixed(2));
 const sanitizeUser = ({ password, ...user }) => user;
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 const generateTemporaryPassword = () => `Erim-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+const otpExpiry = () => new Date(Date.now() + 3 * 60 * 1000).toISOString();
 const queueCredentialDelivery = ({ user, channel = 'email', destination, type, secret }) => {
   const delivery = {
     id: `delivery-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -517,6 +548,14 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(401).json({ message: 'Invalid email or password' });
   }
 
+  if (user.status === 'pending_verification' || user.verificationStatus === 'otp_sent') {
+    return res.status(403).json({
+      message: 'Account OTP verification is required before accessing ERIM.',
+      user: sanitizeUser(user),
+      otpRequired: true
+    });
+  }
+
   res.json({
     user: sanitizeUser(user),
     token: `demo-token-${user.id}`,
@@ -550,8 +589,11 @@ app.post('/api/auth/register', (req, res) => {
 
   state.users.unshift(user);
   const otp = generateOtp();
-  const channel = req.body.deliveryChannel || (req.body.whatsapp ? 'whatsapp' : req.body.phone ? 'sms' : 'email');
-  const destination = channel === 'sms' ? user.phone : channel === 'whatsapp' ? user.whatsapp : user.email;
+  const channel = req.body.deliveryChannel === 'whatsapp' ? 'whatsapp' : 'email';
+  const destination = channel === 'whatsapp' ? user.whatsapp : user.email;
+  if (channel === 'whatsapp' && !destination) {
+    return res.status(400).json({ message: 'WhatsApp number is required to receive OTP by WhatsApp' });
+  }
   state.accountOtps.unshift({
     id: `otp-${Date.now()}`,
     userId: user.id,
@@ -559,7 +601,7 @@ app.post('/api/auth/register', (req, res) => {
     channel,
     destination,
     consumed: false,
-    expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    expiresAt: otpExpiry(),
     createdAt: new Date().toISOString()
   });
   const delivery = queueCredentialDelivery({ user, channel, destination, type: 'otp', secret: otp });
@@ -567,7 +609,6 @@ app.post('/api/auth/register', (req, res) => {
 
   res.status(201).json({
     user: sanitizeUser(user),
-    token: `demo-token-${user.id}`,
     otpRequired: true,
     delivery
   });
@@ -593,7 +634,51 @@ app.post('/api/auth/verify-otp', (req, res) => {
   user.status = 'active';
   user.verificationStatus = 'verified';
   recordAudit('System', 'Verified account OTP', user.email, req.ip);
-  res.json({ user: sanitizeUser(user), message: 'Account verified successfully.' });
+  res.json({ user: sanitizeUser(user), token: `demo-token-${user.id}`, message: 'Account verified successfully.' });
+});
+
+app.post('/api/auth/resend-otp', (req, res) => {
+  const email = String(req.body.email || '').toLowerCase();
+  const user = state.users.find((item) => item.email.toLowerCase() === email || item.id === req.body.userId);
+  if (!user) {
+    return res.status(404).json({ message: 'Account not found' });
+  }
+
+  if (user.verificationStatus === 'verified') {
+    return res.status(409).json({ message: 'Account is already verified' });
+  }
+
+  const latest = state.accountOtps.find((item) => item.userId === user.id && !item.consumed);
+  if (latest && new Date(latest.expiresAt).getTime() > Date.now()) {
+    return res.status(429).json({
+      message: 'Current OTP is still active. Request a new OTP after it expires.',
+      expiresAt: latest.expiresAt
+    });
+  }
+
+  const channel = req.body.deliveryChannel === 'whatsapp' ? 'whatsapp' : 'email';
+  const destination = channel === 'whatsapp' ? (req.body.whatsapp || user.whatsapp) : user.email;
+  if (channel === 'whatsapp' && !destination) {
+    return res.status(400).json({ message: 'WhatsApp number is required to receive OTP by WhatsApp' });
+  }
+
+  const otp = generateOtp();
+  state.accountOtps.unshift({
+    id: `otp-${Date.now()}`,
+    userId: user.id,
+    otp,
+    channel,
+    destination,
+    consumed: false,
+    expiresAt: otpExpiry(),
+    createdAt: new Date().toISOString()
+  });
+  user.verificationStatus = 'otp_sent';
+  user.status = 'pending_verification';
+  const delivery = queueCredentialDelivery({ user, channel, destination, type: 'otp', secret: otp });
+  recordAudit('System', 'Regenerated OTP for account registration', user.email, req.ip);
+
+  res.status(201).json({ user: sanitizeUser(user), otpRequired: true, delivery });
 });
 
 app.post('/api/auth/change-password', (req, res) => {
@@ -728,6 +813,42 @@ app.patch('/api/shops/:id/status', (req, res) => {
   }
 
   shop.status = req.body.status || shop.status;
+  res.json(shop);
+});
+
+app.patch('/api/shops/:id/contact', (req, res) => {
+  const shop = getShop(req.params.id);
+  if (!shop) {
+    return res.status(404).json({ message: 'Shop not found' });
+  }
+
+  ['contactPhone', 'whatsapp', 'email', 'deliveryRegions', 'deliveryCharges', 'pickupAvailable'].forEach((field) => {
+    if (req.body[field] !== undefined) {
+      shop[field] = req.body[field];
+    }
+  });
+
+  recordAudit(req.body.actor || shop.owner, 'Updated merchant contact details', shop.name, req.ip);
+  res.json(shop);
+});
+
+app.patch('/api/shops/:id/policies', (req, res) => {
+  const shop = getShop(req.params.id);
+  if (!shop) {
+    return res.status(404).json({ message: 'Shop not found' });
+  }
+
+  const policy = req.body.returnPolicy || req.body;
+  shop.returnPolicy = {
+    ...(shop.returnPolicy || {}),
+    windowDays: Number(policy.windowDays || shop.returnPolicy?.windowDays || 7),
+    conditions: policy.conditions || shop.returnPolicy?.conditions || '',
+    refundMethod: policy.refundMethod || shop.returnPolicy?.refundMethod || '',
+    returnShipping: policy.returnShipping || shop.returnPolicy?.returnShipping || '',
+    exclusions: policy.exclusions || shop.returnPolicy?.exclusions || ''
+  };
+
+  recordAudit(req.body.actor || shop.owner, 'Updated merchant return policy', shop.name, req.ip);
   res.json(shop);
 });
 
@@ -989,8 +1110,11 @@ app.post('/api/admin/users', (req, res) => {
   };
 
   state.users.unshift(user);
-  const channel = req.body.deliveryChannel || (req.body.whatsapp ? 'whatsapp' : req.body.phone ? 'sms' : 'email');
-  const destination = channel === 'sms' ? user.phone : channel === 'whatsapp' ? user.whatsapp : user.email;
+  const channel = req.body.deliveryChannel === 'whatsapp' ? 'whatsapp' : 'email';
+  const destination = channel === 'whatsapp' ? user.whatsapp : user.email;
+  if (channel === 'whatsapp' && !destination) {
+    return res.status(400).json({ message: 'WhatsApp number is required to receive credentials by WhatsApp' });
+  }
   const delivery = queueCredentialDelivery({ user, channel, destination, type: 'temporary_password', secret: temporaryPassword });
   recordAudit(req.body.actor, 'Created user account', user.email, req.ip);
   res.status(201).json({

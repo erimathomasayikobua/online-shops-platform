@@ -41,11 +41,13 @@ const roleDestinations = {
   care: { label: 'Care console', href: 'http://localhost:3003' }
 };
 
+const normalizeWhatsAppNumber = (value = '') => value.replace(/[^\d]/g, '');
+
 function App() {
   const [catalog, setCatalog] = useState({ shops: [], products: [], categories: [], categoryTree: [] });
   const [view, setView] = useState('storefront');
   const [authMode, setAuthMode] = useState('login');
-  const [authForm, setAuthForm] = useState({ name: '', email: 'customer@erim.test', password: 'pass123', role: 'customer' });
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'customer' });
   const [kycForm, setKycForm] = useState({
     accountType: 'customer',
     legalName: '',
@@ -70,6 +72,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [authNotice, setAuthNotice] = useState('');
   const [authOtp, setAuthOtp] = useState('');
+  const [otpChannel, setOtpChannel] = useState('email');
   const [pendingAuthUser, setPendingAuthUser] = useState(null);
   const [passwordChange, setPasswordChange] = useState({ user: null, currentPassword: '', newPassword: '', personalEmail: '' });
   const [kycNotice, setKycNotice] = useState('');
@@ -77,11 +80,20 @@ function App() {
   const [arrangementMode, setArrangementMode] = useState('Delivery');
   const [arrangementContact, setArrangementContact] = useState('+256 700 123 456');
   const [merchantMessage, setMerchantMessage] = useState('Hi, I would like to arrange delivery details and agree on payment terms before fulfillment.');
+  const [checkoutAddress, setCheckoutAddress] = useState({
+    name: '',
+    phone: '+256 700 123 456',
+    district: 'Kampala, Central Division',
+    street: 'Nakasero, Plot 45'
+  });
+  const [addressDraft, setAddressDraft] = useState(null);
+  const [showAddressEditor, setShowAddressEditor] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
   const [showFloatingMenu, setShowFloatingMenu] = useState(false);
   const [showMerchantMessenger, setShowMerchantMessenger] = useState(false);
   const [showCareMessenger, setShowCareMessenger] = useState(false);
   const [merchantChats, setMerchantChats] = useState([]);
+  const [activeChatAccountId, setActiveChatAccountId] = useState('');
   const [activeChatId, setActiveChatId] = useState('');
   const [merchantChatDraft, setMerchantChatDraft] = useState('');
   const [careTicketId, setCareTicketId] = useState('');
@@ -174,28 +186,60 @@ function App() {
   const cartTotal = cartSubtotal + selectedDelivery.fee;
   const selectedChatShopId = cart[0]?.product.shopId || catalog.shops[0]?.id || 'shop-aurora';
   const selectedChatShop = catalog.shops.find((shop) => shop.id === selectedChatShopId) || catalog.shops[0];
-  const activeMerchantChat = merchantChats.find((chat) => chat.id === activeChatId) || merchantChats[0];
+  const customerChatName = user?.name || 'Guest Customer';
+  const chatAccounts = [
+    ...catalog.shops.map((shop) => ({
+      id: shop.id,
+      type: 'merchant',
+      name: shop.name,
+      subtitle: shop.category || 'Merchant',
+      avatar: shop.name.slice(0, 2)
+    })),
+    { id: 'erim-care', type: 'care', name: 'ERIM Customer Care', subtitle: 'Support Agent', avatar: 'EC' }
+  ];
+  const activeChatAccount = chatAccounts.find((account) => account.id === activeChatAccountId) || chatAccounts.find((account) => account.id === selectedChatShopId) || chatAccounts[0];
+  const activeChatShopId = activeChatAccount?.type === 'merchant' ? activeChatAccount.id : selectedChatShopId;
+  const activeChatShop = catalog.shops.find((shop) => shop.id === activeChatShopId) || selectedChatShop;
+  const activeMerchantChat = merchantChats.find((chat) => chat.id === activeChatId && chat.customer === customerChatName && chat.shopId === activeChatShopId)
+    || merchantChats.find((chat) => chat.customer === customerChatName && chat.shopId === activeChatShopId);
+  const merchantPhone = selectedChatShop?.contactPhone || '+256 700 123 456';
+  const merchantWhatsApp = selectedChatShop?.whatsapp || merchantPhone;
+  const checkoutConversationStarter = `Hello ${selectedChatShop?.name || 'Merchant'}, I am checking out on ERIM. I would like to arrange ${arrangementMode.toLowerCase()} for my cart and discuss payment terms. ${merchantMessage}`;
+  const whatsAppHref = `https://wa.me/${normalizeWhatsAppNumber(merchantWhatsApp)}?text=${encodeURIComponent(checkoutConversationStarter)}`;
+  const addressForCheckout = {
+    ...checkoutAddress,
+    name: checkoutAddress.name || user?.name || 'Customer'
+  };
 
-  const loadMerchantChats = (shopId = selectedChatShopId) => {
+  const loadMerchantChats = (shopId = activeChatShopId) => {
     fetch(`${API_URL}/merchant/chats?shopId=${shopId}`)
       .then((response) => response.json())
       .then((chats) => {
-        setMerchantChats(chats);
-        if (!activeChatId && chats[0]) {
-          setActiveChatId(chats[0].id);
+        setMerchantChats((current) => [
+          ...current.filter((chat) => chat.shopId !== shopId),
+          ...chats
+        ]);
+        const customerThread = chats.find((chat) => chat.customer === customerChatName);
+        if (!activeChatId && customerThread) {
+          setActiveChatId(customerThread.id);
         }
       })
       .catch(() => setNotice('Merchant chat is temporarily unavailable.'));
   };
 
+  const loadAllMerchantChats = () => {
+    const shops = catalog.shops.length ? catalog.shops : selectedChatShop ? [selectedChatShop] : [];
+    shops.forEach((shop) => loadMerchantChats(shop.id));
+  };
+
   useEffect(() => {
     if (!showMerchantMessenger) return undefined;
 
-    loadMerchantChats(selectedChatShopId);
-    const timer = window.setInterval(() => loadMerchantChats(selectedChatShopId), 3000);
+    loadAllMerchantChats();
+    const timer = window.setInterval(loadAllMerchantChats, 3000);
 
     return () => window.clearInterval(timer);
-  }, [showMerchantMessenger, selectedChatShopId]);
+  }, [showMerchantMessenger, catalog.shops.length]);
 
   const loadCareTicket = (ticketId = careTicketId) => {
     if (!ticketId) return;
@@ -290,6 +334,13 @@ function App() {
     const result = await response.json();
 
     if (!response.ok) {
+      if (result.otpRequired) {
+        setPendingAuthUser(result.user);
+        setOtpChannel(result.user?.whatsapp ? 'whatsapp' : 'email');
+        setAuthMode('verify-otp');
+        setAuthNotice(result.message || 'Enter the OTP sent to your account to continue.');
+        return;
+      }
       setAuthNotice(result.message || 'Authentication failed.');
       return;
     }
@@ -303,8 +354,9 @@ function App() {
 
     if (result.otpRequired) {
       setPendingAuthUser(result.user);
+      setOtpChannel(result.delivery?.channel || authForm.deliveryChannel || 'email');
       setAuthMode('verify-otp');
-      setAuthNotice(`OTP sent by ${result.delivery?.channel || 'email'} to ${result.delivery?.destination || result.user.email}.`);
+      setAuthNotice(`OTP sent by ${result.delivery?.channel || 'email'} to ${result.delivery?.destination || result.user.email}. It expires in 3 minutes.`);
       return;
     }
 
@@ -328,6 +380,28 @@ function App() {
     setView('storefront');
   };
 
+  const resendAuthOtp = async () => {
+    const response = await fetch(`${API_URL}/auth/resend-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: pendingAuthUser?.id,
+        email: pendingAuthUser?.email || authForm.email,
+        whatsapp: authForm.whatsapp || pendingAuthUser?.whatsapp,
+        deliveryChannel: otpChannel
+      })
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      setAuthNotice(result.message || 'Could not send a new OTP yet.');
+      return;
+    }
+
+    setPendingAuthUser(result.user);
+    setAuthNotice(`New OTP sent by ${result.delivery?.channel || otpChannel} to ${result.delivery?.destination || result.user.email}. It expires in 3 minutes.`);
+  };
+
   const verifyAuthOtp = async (event) => {
     event.preventDefault();
     const response = await fetch(`${API_URL}/auth/verify-otp`, {
@@ -342,7 +416,7 @@ function App() {
       return;
     }
 
-    localStorage.setItem('erimToken', `demo-token-${result.user.id}`);
+    localStorage.setItem('erimToken', result.token || `demo-token-${result.user.id}`);
     localStorage.setItem('erimUser', JSON.stringify(result.user));
     setUser(result.user);
     setAuthOtp('');
@@ -427,11 +501,85 @@ function App() {
     }
 
     if (!cart.length) return;
+    setCheckoutAddress((current) => ({
+      ...current,
+      name: current.name || user?.name || '',
+      phone: current.phone || arrangementContact
+    }));
     setView('checkout');
+  };
+
+  const openAddressEditor = (mode = 'edit') => {
+    setAddressDraft(mode === 'add' ? { name: user?.name || '', phone: arrangementContact, district: '', street: '' } : addressForCheckout);
+    setShowAddressEditor(true);
+  };
+
+  const saveCheckoutAddress = (event) => {
+    event.preventDefault();
+    if (!addressDraft?.phone || !addressDraft?.district || !addressDraft?.street) {
+      setNotice('Add a phone number, district, and physical address before checkout.');
+      return;
+    }
+    setCheckoutAddress(addressDraft);
+    setArrangementContact(addressDraft.phone);
+    setShowAddressEditor(false);
+    setNotice('Delivery address updated for checkout.');
+  };
+
+  const sendCheckoutChatToMerchant = async (text, orderId = '') => {
+    const response = await fetch(`${API_URL}/merchant/chats/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shopId: selectedChatShopId,
+        customer: customerChatName,
+        sender: customerChatName,
+        text: orderId ? `Order ${orderId}: ${text}` : text,
+        status: 'arranging_terms'
+      })
+    });
+    const result = await response.json();
+    if (response.ok) {
+      setActiveChatAccountId(selectedChatShopId);
+      setActiveChatId(result.chat.id);
+      loadMerchantChats(selectedChatShopId);
+    }
+    return { response, result };
+  };
+
+  const startCheckoutChat = async () => {
+    if (!arrangementContact.trim() || !merchantMessage.trim()) {
+      setNotice('Add your contact phone and message before starting merchant chat.');
+      return;
+    }
+    setShowMerchantMessenger(true);
+    setActiveChatAccountId(selectedChatShopId);
+    const { response, result } = await sendCheckoutChatToMerchant(checkoutConversationStarter);
+    if (!response.ok) {
+      setMerchantChatDraft(checkoutConversationStarter);
+      setNotice(result.message || 'Chat opened, but the first message could not be sent automatically.');
+      return;
+    }
+    setMerchantChatDraft('');
+    setNotice('Merchant chat started with your checkout terms.');
   };
 
   const placeOrder = async () => {
     if (!cart.length) return;
+    if (!arrangementContact.trim()) {
+      setNotice('Add a contact phone number before sending the order.');
+      return;
+    }
+    if (!merchantMessage.trim()) {
+      setNotice('Describe your pickup, delivery, and payment terms before sending the order.');
+      return;
+    }
+    if (!addressForCheckout.phone || !addressForCheckout.district || !addressForCheckout.street) {
+      setNotice('Add a complete delivery address before sending the order.');
+      setShowAddressEditor(true);
+      setAddressDraft(addressForCheckout);
+      return;
+    }
 
     const order = {
       customer: user?.name || 'Guest customer',
@@ -440,7 +588,9 @@ function App() {
       deliveryFee: selectedDelivery.fee,
       delivery: {
         method: selectedDelivery.label,
-        address: 'Kampala, Central Division, Nakasero Plot 45'
+        address: `${addressForCheckout.district}, ${addressForCheckout.street}`,
+        contactName: addressForCheckout.name,
+        phone: addressForCheckout.phone
       },
       status: 'awaiting_arrangement',
       arrangement: {
@@ -468,6 +618,7 @@ function App() {
     }
     setCart([]);
     setLastOrder(created);
+    await sendCheckoutChatToMerchant(checkoutConversationStarter, created.id);
     setNotice(`Order ${created.id} sent to merchant. Chat with the merchant to arrange pickup, delivery, and payment terms.`);
     setView('order-success');
   };
@@ -478,13 +629,13 @@ function App() {
 
     if (!text) return;
 
-    const customer = user?.name || 'Guest Customer';
+    const customer = customerChatName;
     const response = await fetch(`${API_URL}/merchant/chats/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chatId: activeMerchantChat?.id,
-        shopId: selectedChatShopId,
+        chatId: activeMerchantChat?.customer === customer ? activeMerchantChat.id : undefined,
+        shopId: activeChatShopId,
         customer,
         sender: customer,
         text
@@ -499,7 +650,7 @@ function App() {
 
     setMerchantChatDraft('');
     setActiveChatId(result.chat.id);
-    loadMerchantChats(selectedChatShopId);
+    loadMerchantChats(activeChatShopId);
   };
 
   const sendCareChatMessage = async (event) => {
@@ -556,6 +707,82 @@ function App() {
     loadCareTicket(careTicketId);
   };
 
+  const renderChatPanel = (extraClassName = '') => {
+    const isCareChat = activeChatAccount?.type === 'care';
+    const merchantMessages = activeMerchantChat?.messages || [];
+    const visibleMessages = isCareChat ? careMessages : merchantMessages;
+    const draftValue = isCareChat ? careChatDraft : merchantChatDraft;
+    const updateDraft = isCareChat ? setCareChatDraft : setMerchantChatDraft;
+    const submitHandler = isCareChat ? sendCareChatMessage : sendMerchantChatMessage;
+
+    return (
+      <section className={`merchant-messenger-bubble multi-chat-bubble ${extraClassName}`} aria-label="Customer chats">
+        <aside className="chat-account-list">
+          <div className="chat-list-head">
+            <h2>Chats</h2>
+            <button type="button" className="linkish" onClick={() => setShowMerchantMessenger(false)}>Close</button>
+          </div>
+          <label className="chat-search"><span>Search</span><input placeholder="Search chats" readOnly /></label>
+          <div className="chat-account-scroll">
+            {chatAccounts.map((account) => {
+              const accountThread = account.type === 'care'
+                ? careMessages
+                : merchantChats.find((chat) => chat.shopId === account.id && chat.customer === customerChatName)?.messages || [];
+              const lastMessage = accountThread.at(-1)?.text || (account.type === 'care' ? 'Chat with ERIM support' : 'Ask about pickup, delivery, and payment');
+
+              return (
+                <button
+                  className={activeChatAccount?.id === account.id ? 'active' : ''}
+                  type="button"
+                  key={account.id}
+                  onClick={() => {
+                    setActiveChatAccountId(account.id);
+                    setActiveChatId('');
+                    if (account.type === 'merchant') loadMerchantChats(account.id);
+                    if (account.type === 'care' && careTicketId) loadCareTicket(careTicketId);
+                  }}
+                >
+                  <span className="chat-avatar">{account.avatar}</span>
+                  <span><strong>{account.name}</strong><small>{lastMessage}</small></span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+        <section className="chat-conversation">
+          <div className="messenger-head">
+            <div>
+              <strong>{activeChatAccount?.name || 'ERIM Chat'}</strong>
+              <span>{activeChatAccount?.subtitle || 'Online'}</span>
+            </div>
+            {!isCareChat && activeChatShop?.whatsapp && <a className="chat-head-link" href={`https://wa.me/${normalizeWhatsAppNumber(activeChatShop.whatsapp)}`} target="_blank" rel="noreferrer">WhatsApp</a>}
+          </div>
+          <div className="messenger-thread">
+            {visibleMessages.length ? visibleMessages.map((message) => (
+              <article className={`messenger-message ${message.sender === customerChatName || message.sender === 'Guest Customer' ? 'mine' : ''}`} key={message.id}>
+                <strong>{message.sender}</strong>
+                <span>{message.text}</span>
+              </article>
+            )) : (
+              <div className="messenger-empty">
+                <strong>Start a conversation</strong>
+                <span>{isCareChat ? 'Ask ERIM customer care for help.' : 'Ask the merchant about pickup, delivery, availability, or payment terms.'}</span>
+              </div>
+            )}
+          </div>
+          <form className="messenger-compose" onSubmit={submitHandler}>
+            <input
+              value={draftValue}
+              onChange={(event) => updateDraft(event.target.value)}
+              placeholder={`Message ${activeChatAccount?.name || 'ERIM'}...`}
+            />
+            <button type="submit">Send</button>
+          </form>
+        </section>
+      </section>
+    );
+  };
+
   if (view === 'auth') {
     const isLogin = authMode === 'login';
     const isOtp = authMode === 'verify-otp';
@@ -572,26 +799,26 @@ function App() {
             <h1>{isLogin ? 'Sign in to continue shopping and managing commerce.' : 'Create an Erim account for customers, sellers, and teams.'}</h1>
             <p>Use one account experience across the storefront, merchant workspace, admin operations, and customer care.</p>
           </div>
-          <div className="auth-demo-list">
-            <span>Demo logins</span>
-            <strong>customer@erim.test</strong>
-            <strong>seller@erim.test</strong>
-            <small>Password for demos: pass123</small>
-          </div>
         </section>
 
         <main className="auth-panel">
-          <div className="auth-tabs">
-            <button className={isLogin ? 'active' : ''} type="button" onClick={() => setAuthMode('login')}>Sign in</button>
-            <button className={!isLogin ? 'active' : ''} type="button" onClick={() => setAuthMode('register')}>Create account</button>
-          </div>
+          {!isOtp && !isPasswordChange && (
+            <div className="auth-tabs">
+              <button className={isLogin ? 'active' : ''} type="button" onClick={() => setAuthMode('login')}>Sign in</button>
+              <button className={!isLogin ? 'active' : ''} type="button" onClick={() => setAuthMode('register')}>Create account</button>
+            </div>
+          )}
 
           {isOtp ? (
             <form className="auth-form" onSubmit={verifyAuthOtp}>
               <div><p className="eyebrow">Account verification</p><h2>Enter OTP</h2></div>
               <label>One-time password<input value={authOtp} onChange={(event) => setAuthOtp(event.target.value)} placeholder="6-digit code" required /></label>
+              <label>Receive OTP via<select value={otpChannel} onChange={(event) => setOtpChannel(event.target.value)}><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select></label>
+              {otpChannel === 'whatsapp' && <label>WhatsApp number<input value={authForm.whatsapp || pendingAuthUser?.whatsapp || ''} onChange={(event) => setAuthForm({ ...authForm, whatsapp: event.target.value })} placeholder="+256..." /></label>}
+              <p className="auth-help">OTP expires after 3 minutes. A new OTP can be generated after the current one expires.</p>
               {authNotice && <p className="notice">{authNotice}</p>}
               <button type="submit">Verify Account</button>
+              <button className="ghost-button" type="button" onClick={resendAuthOtp}>Send New OTP</button>
             </form>
           ) : isPasswordChange ? (
             <form className="auth-form" onSubmit={completeAuthPasswordChange}>
@@ -655,9 +882,8 @@ function App() {
 
             {!isLogin && (
               <>
-                <label>Phone for SMS<input value={authForm.phone || ''} onChange={(event) => setAuthForm({ ...authForm, phone: event.target.value })} placeholder="+256..." /></label>
                 <label>WhatsApp<input value={authForm.whatsapp || ''} onChange={(event) => setAuthForm({ ...authForm, whatsapp: event.target.value })} placeholder="+256..." /></label>
-                <label>Send OTP via<select value={authForm.deliveryChannel || 'email'} onChange={(event) => setAuthForm({ ...authForm, deliveryChannel: event.target.value })}><option value="email">Email</option><option value="sms">SMS</option><option value="whatsapp">WhatsApp</option></select></label>
+                <label>Send OTP via<select value={authForm.deliveryChannel || 'email'} onChange={(event) => setAuthForm({ ...authForm, deliveryChannel: event.target.value })}><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select></label>
               </>
             )}
 
@@ -870,13 +1096,25 @@ function App() {
                 <div>
                   <h3>Delivery Address</h3>
                   <div className="address-card">
-                    <strong>{user?.name || 'John Doe'} <mark>Default</mark></strong>
-                    <span>+256 700 123 456</span>
-                    <span>Kampala, Central Division</span>
-                    <span>Nakasero, Plot 45</span>
-                    <button className="linkish" type="button">Edit</button>
+                    <strong>{addressForCheckout.name} <mark>Default</mark></strong>
+                    <span>{addressForCheckout.phone}</span>
+                    <span>{addressForCheckout.district}</span>
+                    <span>{addressForCheckout.street}</span>
+                    <button className="linkish" type="button" onClick={() => openAddressEditor('edit')}>Edit</button>
                   </div>
-                  <button className="add-address" type="button">+ Add New Address</button>
+                  <button className="add-address" type="button" onClick={() => openAddressEditor('add')}>+ Add New Address</button>
+                  {showAddressEditor && addressDraft && (
+                    <form className="address-editor" onSubmit={saveCheckoutAddress}>
+                      <label>Name<input value={addressDraft.name} onChange={(event) => setAddressDraft({ ...addressDraft, name: event.target.value })} /></label>
+                      <label>Phone<input value={addressDraft.phone} onChange={(event) => setAddressDraft({ ...addressDraft, phone: event.target.value })} required /></label>
+                      <label>District / City<input value={addressDraft.district} onChange={(event) => setAddressDraft({ ...addressDraft, district: event.target.value })} required /></label>
+                      <label>Physical Address<input value={addressDraft.street} onChange={(event) => setAddressDraft({ ...addressDraft, street: event.target.value })} required /></label>
+                      <div className="address-editor-actions">
+                        <button type="submit">Save Address</button>
+                        <button className="ghost-button" type="button" onClick={() => setShowAddressEditor(false)}>Cancel</button>
+                      </div>
+                    </form>
+                  )}
                 </div>
                 <div>
                   <h3>Delivery Methods</h3>
@@ -900,6 +1138,20 @@ function App() {
             <article className="checkout-card">
               <h2>Chat with Merchant</h2>
               <p>No payment method is collected at checkout. Send the merchant your pickup or delivery request and discuss payment terms directly before fulfillment.</p>
+              <div className="merchant-contact-card">
+                <div>
+                  <span>Merchant</span>
+                  <strong>{selectedChatShop?.name || 'ERIM Merchant'}</strong>
+                </div>
+                <div>
+                  <span>Merchant number</span>
+                  <strong>{merchantPhone}</strong>
+                </div>
+                <div>
+                  <span>WhatsApp number</span>
+                  <strong>{merchantWhatsApp}</strong>
+                </div>
+              </div>
               <div className="payment-grid">
                 <div className="payment-options">
                   {['Delivery', 'Pickup', 'Merchant Advice'].map((method) => (
@@ -912,7 +1164,23 @@ function App() {
                   <h3>Message to Merchant</h3>
                   <label>Contact phone<input value={arrangementContact} onChange={(event) => setArrangementContact(event.target.value)} /></label>
                   <label>Pickup, delivery, and payment terms<textarea value={merchantMessage} onChange={(event) => setMerchantMessage(event.target.value)} /></label>
-                  <div className="security-note">The merchant will receive this order notification and reply from the merchant dashboard chat.</div>
+                  <div className="conversation-starter">
+                    <span>Starter to the conversation</span>
+                    <strong>{checkoutConversationStarter}</strong>
+                  </div>
+                  <div className="merchant-chat-actions">
+                    <button
+                      type="button"
+                      onClick={startCheckoutChat}
+                    >
+                      Start ERIM Chat
+                    </button>
+                    <a className="whatsapp-button" href={whatsAppHref} target="_blank" rel="noreferrer" aria-label={`Chat with ${selectedChatShop?.name || 'merchant'} on WhatsApp`} title="Chat on WhatsApp">
+                      <img src="/whatsapp-logo.png" alt="" />
+                      <span>Open merchant WhatsApp</span>
+                    </a>
+                  </div>
+                  <div className="security-note">The merchant will receive this order notification and can reply from the merchant dashboard chat. WhatsApp opens the merchant number directly.</div>
                 </div>
               </div>
             </article>
@@ -941,10 +1209,20 @@ function App() {
                 <span className="total">Estimated Total<strong>{currency(cartTotal, selectedCurrency)}</strong></span>
               </div>
               <div className="points-card">No online payment is collected here. Final delivery or pickup cost and payment terms are agreed with the merchant.</div>
+              {selectedChatShop?.returnPolicy && (
+                <div className="return-policy-card">
+                  <span>Merchant return policy</span>
+                  <strong>{selectedChatShop.returnPolicy.windowDays || 7}-day return window</strong>
+                  <p>{selectedChatShop.returnPolicy.conditions}</p>
+                  <small>{selectedChatShop.returnPolicy.refundMethod}</small>
+                </div>
+              )}
             </div>
             {['Merchant Chat', 'Flexible Pickup or Delivery', 'Customer Support'].map((item) => <div className="checkout-benefit" key={item}><strong>{item}</strong><span>Discuss details before the merchant confirms fulfillment</span></div>)}
           </aside>
         </main>
+
+        {showMerchantMessenger && renderChatPanel('checkout-chat-bubble')}
       </div>
     );
   }
@@ -1102,32 +1380,26 @@ function App() {
             <button
               type="button"
               onClick={() => {
+                setActiveChatAccountId(selectedChatShopId);
                 setShowMerchantMessenger(true);
                 setShowCareMessenger(false);
                 setShowFloatingMenu(false);
               }}
             >
               <span className="floating-icon">Msg</span>
-              <strong>Merchant Chat</strong>
+              <strong>Chats</strong>
             </button>
             <button
               type="button"
               onClick={() => {
-                setShowCareMessenger(true);
-                setShowMerchantMessenger(false);
+                setActiveChatAccountId('erim-care');
+                setShowMerchantMessenger(true);
+                setShowCareMessenger(false);
                 setShowFloatingMenu(false);
               }}
             >
               <span className="floating-icon care">Care</span>
               <strong>Customer Care</strong>
-            </button>
-            <button type="button" onClick={() => setNotice('Accio Work tools are coming soon for ERIM partners.')}>
-              <span className="floating-icon accent">A</span>
-              <strong>Accio Work</strong>
-            </button>
-            <button type="button" onClick={() => setNotice('Visual product search will be added in a later ERIM release.')}>
-              <span className="floating-icon lens">Lens</span>
-              <strong>Alibaba Lens</strong>
             </button>
             <button type="button" onClick={() => setNotice('Thanks for helping improve ERIM. Survey tools are being prepared.')}>
               <span className="floating-icon survey">?</span>
@@ -1136,38 +1408,7 @@ function App() {
           </section>
         )}
 
-        {showMerchantMessenger && (
-          <section className="merchant-messenger-bubble" aria-label="Chat with merchant">
-            <div className="messenger-head">
-              <div>
-                <strong>{selectedChatShop?.name || 'ERIM Merchant'}</strong>
-                <span>Live merchant chat</span>
-              </div>
-              <button type="button" className="linkish" onClick={() => setShowMerchantMessenger(false)}>Close</button>
-            </div>
-            <div className="messenger-thread">
-              {activeMerchantChat?.messages?.length ? activeMerchantChat.messages.map((message) => (
-                <article className={`messenger-message ${message.sender === (user?.name || 'Guest Customer') ? 'mine' : ''}`} key={message.id}>
-                  <strong>{message.sender}</strong>
-                  <span>{message.text}</span>
-                </article>
-              )) : (
-                <div className="messenger-empty">
-                  <strong>Start a conversation</strong>
-                  <span>Ask the merchant about pickup, delivery, availability, or payment terms.</span>
-                </div>
-              )}
-            </div>
-            <form className="messenger-compose" onSubmit={sendMerchantChatMessage}>
-              <input
-                value={merchantChatDraft}
-                onChange={(event) => setMerchantChatDraft(event.target.value)}
-                placeholder="Message the merchant..."
-              />
-              <button type="submit">Send</button>
-            </form>
-          </section>
-        )}
+        {showMerchantMessenger && renderChatPanel()}
 
         {showCareMessenger && (
           <section className="merchant-messenger-bubble care-messenger-bubble" aria-label="Chat with customer care">
