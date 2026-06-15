@@ -178,8 +178,8 @@ function App() {
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const deliveryOptions = [
-    { id: 'standard', label: 'Standard Delivery', eta: '3 - 4 working days', fee: 5000 },
-    { id: 'express', label: 'Express Delivery', eta: '1 - 2 working days', fee: 15000 },
+    { id: 'standard', label: 'Standard Delivery', eta: '2 - 4 working days', fee: 5000 },
+    { id: 'express', label: 'Express Delivery', eta: '1 working days', fee: 15000 },
     { id: 'pickup', label: 'Pick Up Station', eta: 'Nearest ERIM pick up station', fee: 0 }
   ];
   const selectedDelivery = deliveryOptions.find((item) => item.id === deliveryMethod) || deliveryOptions[0];
