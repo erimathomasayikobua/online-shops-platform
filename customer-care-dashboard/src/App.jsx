@@ -61,6 +61,7 @@ function App() {
   const [replyText, setReplyText] = useState('');
   const [noteText, setNoteText] = useState('');
   const [notice, setNotice] = useState('');
+  const [showChatTicketForm, setShowChatTicketForm] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [dateRange, setDateRange] = useState('This Week');
   const [knowledgeBase, setKnowledgeBase] = useState(initialKnowledgeArticles);
@@ -192,6 +193,18 @@ function App() {
   }, [enrichedTickets, query, statusFilter]);
 
   const selectedTicket = enrichedTickets.find((ticket) => ticket.id === selectedTicketId) || enrichedTickets[0];
+  const chatTickets = useMemo(() => filteredTickets.filter((ticket) => ticket.channel === 'chat'), [filteredTickets]);
+
+  useEffect(() => {
+    if (activePage === 'chat' && chatTickets.length && selectedTicket?.channel !== 'chat') {
+      setSelectedTicketId(chatTickets[0].id);
+    }
+  }, [activePage, chatTickets, selectedTicket?.channel]);
+
+  const selectTicket = (ticket, prefill = '') => {
+    setSelectedTicketId(ticket.id);
+    if (prefill) setReplyText(prefill);
+  };
 
   const updateTicket = async (ticketId, payload, message) => {
     const response = await fetch(`${API_URL}/customer-care/tickets/${ticketId}`, {
@@ -244,8 +257,9 @@ function App() {
       return;
     }
     setTicketForm({ customer: '', email: '', phone: '', subject: '', issue: '', priority: 'medium', category: 'Shipping & Delivery', channel: 'email', orderId: '' });
+    setShowChatTicketForm(false);
     setSelectedTicketId(created.id);
-    setActivePage('dashboard');
+    setActivePage(created.channel === 'chat' ? 'chat' : 'tickets');
     setNotice(`${created.id} opened for ${created.customer}.`);
     loadOverview();
   };
@@ -316,7 +330,6 @@ function App() {
 
   const applyMacro = (macro) => {
     setReplyText(macro.body);
-    setActivePage('dashboard');
     setNotice(`${macro.title} inserted into the reply box.`);
   };
 
@@ -470,7 +483,15 @@ function App() {
           <button onClick={addNote} disabled={!noteText.trim()}>Save Note</button>
           <label>Reply<textarea value={replyText} onChange={(event) => setReplyText(event.target.value)} placeholder="Type your reply here..." /></label>
           <button onClick={sendReply} disabled={!replyText.trim()}>Send Reply</button>
-          {!!selectedTicket.replies?.length && <div className="reply-history">{selectedTicket.replies.map((reply) => <span key={reply.id}><strong>{reply.agent}</strong>{reply.message}</span>)}</div>}
+          <div className="reply-history">
+            <span><strong>{selectedTicket.customer}</strong>{selectedTicket.issue || selectedTicket.subject}</span>
+            {(selectedTicket.replies || []).map((reply) => <span key={reply.id}><strong>{reply.agent}</strong>{reply.message}<small>{new Date(reply.createdAt).toLocaleString()}</small></span>)}
+          </div>
+          {!!selectedTicket.notes?.length && (
+            <div className="reply-history notes-history">
+              {selectedTicket.notes.map((note, index) => <span key={`${selectedTicket.id}-note-${index}`}><strong>Internal note</strong>{note}</span>)}
+            </div>
+          )}
         </section>
 
         <section className="care-panel quick-actions">
@@ -505,6 +526,79 @@ function App() {
     </form>
   );
 
+  const renderInlineChatTicketForm = () => (
+    <form className="inline-editor chat-ticket-form" onSubmit={createTicket}>
+      <div className="form-grid">
+        <label>Customer<input value={ticketForm.customer} onChange={(event) => setTicketForm({ ...ticketForm, customer: event.target.value, channel: 'chat' })} required /></label>
+        <label>Email<input type="email" value={ticketForm.email} onChange={(event) => setTicketForm({ ...ticketForm, email: event.target.value, channel: 'chat' })} /></label>
+        <label>Phone<input value={ticketForm.phone} onChange={(event) => setTicketForm({ ...ticketForm, phone: event.target.value, channel: 'chat' })} /></label>
+        <label>Order ID<input value={ticketForm.orderId} onChange={(event) => setTicketForm({ ...ticketForm, orderId: event.target.value, channel: 'chat' })} /></label>
+        <label>Priority<select value={ticketForm.priority} onChange={(event) => setTicketForm({ ...ticketForm, priority: event.target.value, channel: 'chat' })}><option>low</option><option>medium</option><option>high</option></select></label>
+        <label>Category<input value={ticketForm.category} onChange={(event) => setTicketForm({ ...ticketForm, category: event.target.value, channel: 'chat' })} /></label>
+      </div>
+      <label>Subject<input value={ticketForm.subject} onChange={(event) => setTicketForm({ ...ticketForm, subject: event.target.value, channel: 'chat' })} required /></label>
+      <label>Chat Issue<textarea value={ticketForm.issue} onChange={(event) => setTicketForm({ ...ticketForm, issue: event.target.value, channel: 'chat' })} required /></label>
+      <div className="inline-actions">
+        <button type="submit">Create Chat Ticket</button>
+        <button type="button" className="icon-button" onClick={() => setShowChatTicketForm(false)}>Cancel</button>
+      </div>
+    </form>
+  );
+
+  const renderChatPage = () => (
+    <section className="care-panel chat-ticket-workspace">
+      <div className="panel-head">
+        <div><h2>Live Chat</h2><small>{chatTickets.length} chat ticket{chatTickets.length === 1 ? '' : 's'} in view</small></div>
+        <div className="inline-actions">
+          <button onClick={() => {
+            setTicketForm({ customer: '', email: '', phone: '', subject: '', issue: '', priority: 'medium', category: 'Shipping & Delivery', channel: 'chat', orderId: '' });
+            setShowChatTicketForm((current) => !current);
+          }}>New Chat Ticket</button>
+          <button className="icon-button" onClick={exportReport}>Export</button>
+        </div>
+      </div>
+      {renderTicketTabs()}
+      {showChatTicketForm && renderInlineChatTicketForm()}
+      <div className="chat-ticket-list">
+        {chatTickets.length ? chatTickets.map((ticket) => (
+          <article className={selectedTicket?.id === ticket.id ? 'selected' : ''} key={ticket.id}>
+            <span className="avatar">{ticket.customer.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span>
+            <button className="chat-ticket-main" onClick={() => selectTicket(ticket)}>
+              <strong>{ticket.customer}<small>{ticket.displayId} - {ticket.updatedAgo}</small></strong>
+              <span>{ticket.subject}</span>
+              <small>{ticket.issue}</small>
+            </button>
+            <mark className={ticket.status}>{statusLabels[ticket.status] || ticket.status}</mark>
+            <div className="chat-ticket-actions">
+              <button onClick={() => selectTicket(ticket, `Hello ${ticket.customer}, I am checking this for you now.`)}>Reply</button>
+              <button className="icon-button" onClick={() => { selectTicket(ticket); updateTicket(ticket.id, { assignedTo: currentAgent, status: 'in_progress' }, `${ticket.displayId} claimed by ${currentAgent}.`); }}>Claim</button>
+              <button className="icon-button" onClick={() => { selectTicket(ticket); updateTicket(ticket.id, { status: 'resolved' }, `${ticket.displayId} resolved.`); }}>Resolve</button>
+            </div>
+          </article>
+        )) : <p>No chat tickets match the current search or status filter.</p>}
+      </div>
+      {selectedTicket?.channel === 'chat' && (
+        <div className="chat-thread-panel">
+          <div className="panel-head">
+            <h2>{selectedTicket.customer}</h2>
+            <span>{selectedTicket.displayId}</span>
+          </div>
+          <div className="chat-bubbles">
+            <span className="customer-bubble">{selectedTicket.issue || selectedTicket.subject}</span>
+            {(selectedTicket.replies || []).map((reply) => <span className="agent-bubble" key={reply.id}>{reply.message}<small>{reply.agent}</small></span>)}
+          </div>
+          <div className="macro-strip">
+            {macros.slice(0, 3).map((macro) => <button className="icon-button" key={macro.id} onClick={() => applyMacro(macro)}>{macro.title}</button>)}
+          </div>
+          <div className="chat-compose-row">
+            <textarea value={replyText} onChange={(event) => setReplyText(event.target.value)} placeholder={`Reply to ${selectedTicket.customer}...`} />
+            <button onClick={sendReply} disabled={!replyText.trim()}>Send Reply</button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+
   const renderFeaturePage = () => {
     if (activePage === 'tickets' || activePage === 'my' || activePage === 'unassigned' || activePage === 'all' || activePage === 'sla') {
       const rows = activePage === 'my'
@@ -524,7 +618,7 @@ function App() {
     }
 
     if (activePage === 'chat') {
-      return <section className="care-panel chat-page"><div className="panel-head"><h2>Live Chat</h2><button onClick={() => setActivePage('create')}>New Chat Ticket</button></div>{enrichedTickets.filter((ticket) => ticket.channel === 'chat').map((ticket) => <article key={ticket.id}><strong>{ticket.customer}</strong><span>{ticket.subject}</span><button onClick={() => { setSelectedTicketId(ticket.id); setReplyText(`Hello ${ticket.customer}, I am checking this for you now.`); setActivePage('dashboard'); }}>Reply</button></article>)}</section>;
+      return renderChatPage();
     }
 
     if (activePage === 'calls') {

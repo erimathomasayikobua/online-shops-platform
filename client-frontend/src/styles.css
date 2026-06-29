@@ -239,6 +239,7 @@ button:disabled {
   min-height: 340px;
   overflow: hidden;
   padding: 24px;
+  position: relative;
 }
 
 .hero-copy span {
@@ -273,10 +274,22 @@ button:disabled {
   background: #fff;
   border-radius: 50%;
   color: #233150;
-  font-size: 30px;
+  font-size: 0;
   height: 42px;
   padding: 0;
+  position: relative;
+  z-index: 2;
   width: 42px;
+}
+
+.hero-arrow::before {
+  content: "<";
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.hero-arrow.right::before {
+  content: ">";
 }
 
 .hero-products {
@@ -285,13 +298,47 @@ button:disabled {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.hero-products button {
+  background: transparent;
+  border: 0;
+  border-radius: 22px;
+  display: block;
+  min-height: auto;
+  padding: 0;
+}
+
 .hero-products img {
   aspect-ratio: 1 / 1;
   background: rgba(255, 255, 255, 0.55);
   border-radius: 22px;
   object-fit: cover;
   padding: 8px;
+  transition: transform 180ms ease, box-shadow 180ms ease;
   width: 100%;
+}
+
+.hero-products button:hover img {
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.16);
+  transform: translateY(-3px);
+}
+
+.hero-dots {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.hero-dots button {
+  background: rgba(7, 18, 47, 0.18);
+  border-radius: 999px;
+  height: 9px;
+  min-height: 9px;
+  padding: 0;
+  width: 28px;
+}
+
+.hero-dots button.active {
+  background: #ff5a00;
 }
 
 .hero-benefits {

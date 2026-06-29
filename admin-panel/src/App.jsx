@@ -27,7 +27,7 @@ const resourceMap = {
   ads: { collection: 'ads', title: 'Advertisements', columns: ['title', 'owner', 'budget', 'status'], create: { title: '', owner: '', budget: '', status: 'review' }, actions: [['Approve', { status: 'active' }], ['Pause', { status: 'paused' }]] },
   campaigns: { collection: 'campaigns', title: 'Campaigns', columns: ['title', 'audience', 'budget', 'status'], create: { title: '', audience: 'All users', budget: '', status: 'draft' }, actions: [['Launch', { status: 'active' }], ['Pause', { status: 'paused' }]] },
   subscriptions: { collection: 'subscriptions', title: 'Shop Subscriptions', columns: ['shopId', 'plan', 'amount', 'daysRemaining', 'status'], create: { shopId: 'shop-aurora', plan: 'Monthly', amount: 10000, daysRemaining: 30, status: 'active' }, actions: [['Renew', { status: 'active', daysRemaining: 30 }], ['Suspend', { status: 'suspended' }]] },
-  plans: { collection: 'subscriptionPlans', title: 'Subscription Plans', columns: ['name', 'price', 'validityDays', 'status'], create: { name: '', price: '', validityDays: 30, status: 'active' }, actions: [['Activate', { status: 'active' }], ['Disable', { status: 'inactive' }]] },
+  plans: { collection: 'subscriptionPlans', title: 'Subscription Plans', columns: ['name', 'price', 'validityDays', 'trialDays', 'billingStarts', 'status'], create: { name: '', price: '', validityDays: 30, trialDays: 30, billingStarts: 'second_month', status: 'active' }, actions: [['Activate', { status: 'active' }], ['Disable', { status: 'inactive' }]] },
   payments: { collection: 'payments', title: 'Payments', columns: ['merchant', 'method', 'amount', 'status'], create: { merchant: '', method: 'MTN Mobile Money', amount: '', status: 'pending' }, actions: [['Verify', { status: 'completed' }], ['Flag', { status: 'flagged' }]] },
   payouts: { collection: 'payouts', title: 'Payouts', columns: ['merchant', 'amount', 'method', 'status'], create: { merchant: '', amount: '', method: 'MTN Mobile Money', status: 'pending' }, actions: [['Approve', { status: 'approved' }], ['Hold', { status: 'held' }]] },
   tax: { collection: 'taxes', title: 'Tax Management', columns: ['name', 'rate', 'region', 'status'], create: { name: '', rate: 18, region: 'Uganda', status: 'active' }, actions: [['Activate', { status: 'active' }], ['Review', { status: 'review' }]] },
@@ -277,7 +277,7 @@ function App() {
     const payload = { ...form };
     Object.keys(payload).forEach((key) => {
       if (key === 'subcategories' && typeof payload[key] === 'string') payload[key] = payload[key].split(',').map((item) => item.trim()).filter(Boolean);
-      if (['amount', 'budget', 'price', 'rate', 'baseRate', 'refundAmount', 'priority', 'usage', 'users', 'version', 'validityDays', 'daysRemaining'].includes(key) && payload[key] !== '') payload[key] = Number(payload[key]);
+      if (['amount', 'budget', 'price', 'rate', 'baseRate', 'refundAmount', 'priority', 'usage', 'users', 'version', 'validityDays', 'trialDays', 'daysRemaining'].includes(key) && payload[key] !== '') payload[key] = Number(payload[key]);
     });
 
     try {

@@ -358,9 +358,9 @@ const state = {
       { id: 'camp-2', title: 'Holiday Promotions', audience: 'Retail merchants', budget: 450000, status: 'draft' }
     ],
     subscriptionPlans: [
-      { id: 'plan-monthly', name: 'Monthly', price: 10000, validityDays: 30, status: 'active' },
-      { id: 'plan-half-year', name: 'Half Year', price: 55000, validityDays: 180, status: 'active' },
-      { id: 'plan-annual', name: 'Annual', price: 100000, validityDays: 365, status: 'active' }
+      { id: 'plan-monthly', name: 'Monthly', price: 10000, validityDays: 30, trialDays: 30, billingStarts: 'second_month', status: 'active' },
+      { id: 'plan-half-year', name: 'Half Year', price: 55000, validityDays: 180, trialDays: 30, billingStarts: 'second_month', status: 'active' },
+      { id: 'plan-annual', name: 'Annual', price: 100000, validityDays: 365, trialDays: 30, billingStarts: 'second_month', status: 'active' }
     ],
     subscriptions: [
       { id: 'sub-aurora', shopId: 'shop-aurora', plan: 'Annual', amount: 100000, daysRemaining: 284, status: 'active' },

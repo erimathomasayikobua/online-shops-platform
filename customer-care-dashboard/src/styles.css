@@ -867,6 +867,138 @@ textarea {
   padding: 14px;
 }
 
+.inline-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.panel-head small {
+  color: #64748b;
+  display: block;
+  margin-top: 4px;
+}
+
+.chat-ticket-workspace {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.chat-ticket-list {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-ticket-list article {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #edf1f6;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+  padding: 14px;
+}
+
+.chat-ticket-list article.selected {
+  background: #eef6ff;
+  border-color: #b9d5ff;
+}
+
+.chat-ticket-main {
+  background: transparent;
+  color: #061128;
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+  min-height: auto;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.chat-ticket-main strong,
+.chat-ticket-main span,
+.chat-ticket-main small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-ticket-main small,
+.chat-bubbles small {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.chat-ticket-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-thread-panel {
+  background: #fff;
+  border: 1px solid #dfe6f0;
+  border-radius: 10px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.chat-bubbles {
+  background: #f8fafc;
+  border: 1px solid #edf1f6;
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 14px;
+}
+
+.customer-bubble,
+.agent-bubble {
+  border-radius: 12px;
+  display: grid;
+  gap: 5px;
+  line-height: 1.45;
+  max-width: min(620px, 82%);
+  padding: 10px 12px;
+}
+
+.customer-bubble {
+  background: #fff;
+  border: 1px solid #e5ebf3;
+  justify-self: start;
+}
+
+.agent-bubble {
+  background: #dbeafe;
+  color: #061128;
+  justify-self: end;
+}
+
+.macro-strip,
+.chat-compose-row {
+  display: flex;
+  gap: 10px;
+}
+
+.macro-strip {
+  flex-wrap: wrap;
+}
+
+.chat-compose-row {
+  align-items: end;
+}
+
+.chat-compose-row textarea {
+  min-height: 74px;
+}
+
 .form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -888,6 +1020,13 @@ textarea {
   .kb-grid,
   .report-grid {
     grid-template-columns: 1fr;
+  }
+
+  .chat-ticket-list article,
+  .chat-compose-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .care-sidebar,

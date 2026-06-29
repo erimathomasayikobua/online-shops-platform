@@ -43,6 +43,36 @@ const roleDestinations = {
 
 const normalizeWhatsAppNumber = (value = '') => value.replace(/[^\d]/g, '');
 
+const heroSlides = [
+  {
+    id: 'summer-sale',
+    eyebrow: 'Summer Sale',
+    title: 'Big Deals. Bigger',
+    highlight: 'Savings.',
+    copy: 'Up to 60% off on electronics, fashion, home goods and more.',
+    category: 'All',
+    benefits: ['100% Original', 'Easy Returns', 'Secure Payments', 'Fast Delivery']
+  },
+  {
+    id: 'home-refresh',
+    eyebrow: 'Home Refresh',
+    title: 'Upgrade every',
+    highlight: 'Room.',
+    copy: 'Shop home, kitchen, bedding, and decor picks from trusted ERIM merchants.',
+    category: 'Home and Living',
+    benefits: ['Verified Stores', 'Pickup Options', 'Return Policies', 'Fast Delivery']
+  },
+  {
+    id: 'fashion-week',
+    eyebrow: 'Fashion Deals',
+    title: 'Fresh fits.',
+    highlight: 'Local style.',
+    copy: 'Discover apparel, bags, accessories, and seasonal offers from merchant stores.',
+    category: 'Fashion',
+    benefits: ['Merchant Chat', 'Size Advice', 'Easy Returns', 'New Arrivals']
+  }
+];
+
 function App() {
   const [catalog, setCatalog] = useState({ shops: [], products: [], categories: [], categoryTree: [] });
   const [view, setView] = useState('storefront');
@@ -101,16 +131,26 @@ function App() {
   const [careMessages, setCareMessages] = useState([
     { id: 'care-welcome', sender: 'ERIM Care', text: 'Hi, welcome to ERIM support. How can we help today?' }
   ]);
+  const [heroSlideIndex, setHeroSlideIndex] = useState(0);
 
   const selectedCurrency = useMemo(() => {
     return currencies.find((item) => item.code === currencyCode) || currencies[0];
   }, [currencyCode]);
+  const activeHeroSlide = heroSlides[heroSlideIndex];
 
   useEffect(() => {
     fetch(`${API_URL}/catalog`)
       .then((response) => response.json())
       .then(setCatalog)
       .catch(() => setNotice('Backend is offline. Start it with npm run dev:backend.'));
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setHeroSlideIndex((current) => (current + 1) % heroSlides.length);
+    }, 5200);
+
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -163,6 +203,11 @@ function App() {
   const displayedProducts = useMemo(() => {
     return getCategoryProducts(searchedProducts, category, catalog.categoryTree);
   }, [searchedProducts, category, catalog.categoryTree]);
+  const heroProducts = useMemo(() => {
+    const slideProducts = getCategoryProducts(catalog.products, activeHeroSlide.category, catalog.categoryTree);
+    const products = slideProducts.length >= 4 ? slideProducts : catalog.products;
+    return products.slice(0, 4);
+  }, [activeHeroSlide.category, catalog.products, catalog.categoryTree]);
 
   const groupedProducts = useMemo(() => {
     const activeCategories = category === 'All' ? catalog.categories : [category];
@@ -174,6 +219,15 @@ function App() {
       }))
       .filter((group) => group.products.length);
   }, [catalog.categories, catalog.categoryTree, searchedProducts, category]);
+
+  const moveHeroSlide = (direction) => {
+    setHeroSlideIndex((current) => (current + direction + heroSlides.length) % heroSlides.length);
+  };
+
+  const shopHeroSlide = () => {
+    setCategory(activeHeroSlide.category);
+    setNotice(`${activeHeroSlide.eyebrow} products are now showing.`);
+  };
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
@@ -1278,19 +1332,41 @@ function App() {
         </aside>
 
         <section className="shop-content">
-          <section className="store-hero">
+          <section
+            className="store-hero"
+            aria-label="Store promotions slideshow"
+            onClick={(event) => {
+              if (!event.target.closest('.hero-arrow')) return;
+              moveHeroSlide(event.target.closest('.hero-arrow').classList.contains('right') ? 1 : -1);
+            }}
+          >
             <button className="hero-arrow" type="button">‹</button>
             <div className="hero-copy">
-              <span>Summer Sale</span>
-              <h1>Big Deals. Bigger <strong>Savings.</strong></h1>
-              <p>Up to 60% off on electronics, fashion, home goods and more.</p>
-              <button type="button" onClick={() => setCategory('All')}>Shop Now</button>
+              <span>{activeHeroSlide.eyebrow}</span>
+              <h1>{activeHeroSlide.title} <strong>{activeHeroSlide.highlight}</strong></h1>
+              <p>{activeHeroSlide.copy}</p>
+              <button type="button" onClick={shopHeroSlide}>Shop Now</button>
+              <div className="hero-dots" aria-label="Choose promotion">
+                {heroSlides.map((slide, index) => (
+                  <button
+                    className={heroSlideIndex === index ? 'active' : ''}
+                    key={slide.id}
+                    onClick={() => setHeroSlideIndex(index)}
+                    type="button"
+                    aria-label={`Show ${slide.eyebrow}`}
+                  />
+                ))}
+              </div>
             </div>
             <div className="hero-products">
-              {catalog.products.slice(0, 4).map((product) => <img src={product.image} alt="" key={product.id} />)}
+              {heroProducts.map((product) => (
+                <button type="button" onClick={() => addToCart(product)} key={product.id} aria-label={`Add ${product.name} to cart`}>
+                  <img src={product.image} alt={product.name} />
+                </button>
+              ))}
             </div>
             <div className="hero-benefits">
-              {['100% Original', 'Easy Returns', 'Secure Payments', 'Fast Delivery'].map((item) => <span key={item}><strong>{item}</strong><small>Trusted ERIM shopping</small></span>)}
+              {activeHeroSlide.benefits.map((item) => <span key={item}><strong>{item}</strong><small>Trusted ERIM shopping</small></span>)}
             </div>
             <button className="hero-arrow right" type="button">›</button>
           </section>

@@ -3,6 +3,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const money = (value) => `Ugx ${Math.round(Number(value || 0)).toLocaleString('en-UG')}`;
 const ugx = money;
+const FREE_TRIAL_DAYS = 30;
+const addDays = (days) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+const formatUgDate = (date) => new Intl.DateTimeFormat('en-UG', {
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric'
+}).format(date);
 
 const navGroups = [
   {
@@ -104,7 +111,7 @@ const subscriptionReceivers = {
 };
 
 const merchantFaqs = [
-  ['How do I activate my shop?', 'Choose a subscription plan, pay in Ugx to an ERIM receiving account, then complete store setup and review.'],
+  ['How do I activate my shop?', 'Choose a subscription plan to activate the free first month, then complete store setup and review. Payments in Ugx start in month two.'],
   ['When does stock reduce?', 'Online customer orders reduce product stock only after you confirm fulfillment. POS sales reduce stock immediately because they are merchant-confirmed at checkout.'],
   ['Where do I get support?', 'Use Merchant Chat for quick messages or open the Customer-care dashboard for ticket handling and FAQs.']
 ];
@@ -170,6 +177,7 @@ function App() {
   const [activePage, setActivePage] = useState('dashboard');
   const [notice, setNotice] = useState('');
   const [rentPaid, setRentPaid] = useState(false);
+  const [freeTrialActive, setFreeTrialActive] = useState(false);
   const [product, setProduct] = useState({ name: '', category: '', price: '', stock: '', image: '' });
   const [posCart, setPosCart] = useState([]);
   const [saleCustomer, setSaleCustomer] = useState('Walk-in customer');
@@ -249,7 +257,9 @@ function App() {
   const arrangementOrders = useMemo(() => orders.filter((order) => order.status === 'awaiting_arrangement'), [orders]);
   const activeMerchantChat = merchantChatThreads.find((thread) => thread.id === activeMerchantChatId) || merchantChatThreads[0];
   const posTotal = posCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const rentDue = rentPaid ? 0 : selectedPlan.amount;
+  const firstBillingDate = useMemo(() => addDays(FREE_TRIAL_DAYS), []);
+  const firstBillingDateLabel = formatUgDate(firstBillingDate);
+  const subscriptionStateText = freeTrialActive ? 'Free first month active' : rentPaid ? 'Subscription active' : 'Subscription pending';
   const notifications = [
     ...arrangementOrders.map((order) => ({
       id: `order-note-${order.id}`,
@@ -261,7 +271,7 @@ function App() {
       title: 'Customer message',
       body: `${thread.customer} sent ${thread.messages.length} message${thread.messages.length === 1 ? '' : 's'} about ${thread.shop?.name || 'your store'}.`
     })),
-    { id: 'note-1', title: 'Subscription active', body: `${selectedPlan.name} is active. Renewal date: 12 March 2027.` },
+    { id: 'note-1', title: subscriptionStateText, body: freeTrialActive ? `${selectedPlan.name} selected. First payment of ${ugx(selectedPlan.amount)} is due on ${firstBillingDateLabel}.` : `${selectedPlan.name} is active. Renewal date: 12 March 2027.` },
     { id: 'note-2', title: 'Inventory healthy', body: `${lowStockProducts.length} low-stock products need attention.` },
     { id: 'note-3', title: 'Payout currency', body: 'All merchant balances are settled in Ugx.' }
   ];
@@ -333,6 +343,7 @@ function App() {
     });
     setSelectedPlan(subscriptionPlans[2]);
     setRentPaid(true);
+    setFreeTrialActive(false);
     setMerchantStage('dashboard');
     setNotice(`Welcome back, ${result.user.name}.`);
   };
@@ -366,6 +377,7 @@ function App() {
     setPasswordChange({ user: null, currentPassword: '', newPassword: '', personalEmail: '' });
     setSelectedPlan(subscriptionPlans[2]);
     setRentPaid(true);
+    setFreeTrialActive(false);
     setMerchantStage('dashboard');
     setNotice(result.message);
   };
@@ -390,7 +402,8 @@ function App() {
   const paySubscription = (event) => {
     event.preventDefault();
     setRentPaid(true);
-    setNotice(`${selectedPlan.name} activated for ${ugx(selectedPlan.amount)}.`);
+    setFreeTrialActive(true);
+    setNotice(`Free first month activated. Your first ${selectedPlan.name} payment of ${ugx(selectedPlan.amount)} is due on ${firstBillingDateLabel}.`);
     setMerchantStage('success');
   };
 
@@ -593,6 +606,7 @@ function App() {
   const logoutMerchant = () => {
     setMerchant(null);
     setRentPaid(false);
+    setFreeTrialActive(false);
     setActivePage('dashboard');
     setShowNotifications(false);
     setShowChat(false);
@@ -636,14 +650,14 @@ function App() {
       return renderOnboardingShell(
         <section className="onboarding-card landing-card">
           <h2>Start selling on ERIM</h2>
-          <p>Open your merchant account, activate a subscription in Ugandan shillings, set up your shop, and publish your first product in minutes.</p>
+          <p>Open your merchant account, choose a plan, use your first month free, and start paying in Ugandan shillings from the second month of operation.</p>
           <div className="landing-actions">
             <button onClick={() => setMerchantStage('account')}>Start Selling on ERIM</button>
             <button className="light-button" onClick={() => setMerchantStage('login')}>I already have an account</button>
           </div>
         </section>,
         'Sell online with ERIM.',
-        'A fast onboarding flow for merchants who want product management, secure payments, delivery support, and sales analytics.'
+        'A fast onboarding flow for merchants who want product management, secure payments, delivery support, and sales analytics with the first month free.'
       );
     }
 
@@ -751,6 +765,7 @@ function App() {
           <div>
             <p className="eyebrow">Step 4</p>
             <h2>Choose Subscription Plan</h2>
+            <p className="subtle">Select the plan you want after the free first month. Amount due today is {ugx(0)}.</p>
           </div>
           <div className="plan-grid">
             {subscriptionPlans.map((plan) => (
@@ -766,10 +781,10 @@ function App() {
               </article>
             ))}
           </div>
-          <button onClick={() => setMerchantStage('payment')}>Continue to Payment</button>
+          <button onClick={() => setMerchantStage('payment')}>Continue to Free Month Activation</button>
         </section>,
-        'Recurring revenue for ERIM.',
-        'Merchants subscribe before shop setup, keeping marketplace operations funded and predictable.'
+        'First month free.',
+        'Merchants select a plan during setup, but billing starts in the second month of operation.'
       );
     }
 
@@ -778,12 +793,13 @@ function App() {
         <form className="onboarding-card auth-card" onSubmit={paySubscription}>
           <div>
             <p className="eyebrow">Step 5</p>
-            <h2>Payment</h2>
+            <h2>Free Month Activation</h2>
           </div>
           <div className="payment-summary">
             <span>Selected Plan<strong>{selectedPlan.name}</strong></span>
-            <span>Amount<strong>{ugx(selectedPlan.amount)}</strong></span>
-            <span>Receiving Account<strong>{subscriptionReceivers[paymentForm.method]}</strong></span>
+            <span>Amount Due Today<strong>{ugx(0)}</strong></span>
+            <span>First Payment<strong>{ugx(selectedPlan.amount)} on {firstBillingDateLabel}</strong></span>
+            <span>Month Two Receiving Account<strong>{subscriptionReceivers[paymentForm.method]}</strong></span>
           </div>
           <label>Payment Method
             <select value={paymentForm.method} onChange={(event) => setPaymentForm({ ...paymentForm, method: event.target.value })}>
@@ -794,30 +810,29 @@ function App() {
             </select>
           </label>
           <label>Phone Number<input value={paymentForm.phone} onChange={(event) => setPaymentForm({ ...paymentForm, phone: event.target.value })} required /></label>
-          <button type="submit">Pay Now</button>
+          <button type="submit">Activate Free First Month</button>
         </form>,
-        'Pay subscription in Ugx.',
-        'ERIM uses Ugandan shillings as the base currency for merchant subscription and rent payments.'
+        'No payment due today.',
+        'ERIM uses Ugandan shillings as the base currency. The selected receiving account is where month-two subscription payments will be sent.'
       );
     }
 
     if (merchantStage === 'success') {
-      const expiry = selectedPlan.id === 'annual' ? '12 Months From Today' : selectedPlan.validity;
       return renderOnboardingShell(
         <section className="onboarding-card success-card">
           <span className="success-icon">Done</span>
-          <h2>Subscription Activated</h2>
+          <h2>Free First Month Activated</h2>
           <div className="payment-summary">
             <span>Merchant<strong>{businessForm.shopName || merchant?.businessName || 'Dove Fashion Store'}</strong></span>
             <span>Plan<strong>{selectedPlan.name}</strong></span>
-            <span>Amount Paid<strong>{ugx(selectedPlan.amount)}</strong></span>
-            <span>Expiry Date<strong>{expiry}</strong></span>
-            <span>Status<strong>Active</strong></span>
+            <span>Amount Paid Today<strong>{ugx(0)}</strong></span>
+            <span>First Billing Date<strong>{firstBillingDateLabel}</strong></span>
+            <span>Status<strong>Free Month Active</strong></span>
           </div>
           <button onClick={() => setMerchantStage('setup')}>Setup Shop</button>
         </section>,
-        'Payment complete.',
-        'Your subscription is active. Finish the setup wizard to prepare the store for review.'
+        'Trial active.',
+        'Your shop setup is unlocked for the free first month. Paid subscription begins in the second month.'
       );
     }
 
@@ -874,13 +889,13 @@ function App() {
         <section className="onboarding-card success-card">
           <h2>Shop Review</h2>
           <div className="review-list">
-            {['Store Information', 'Payment Verification', 'Product Compliance'].map((item) => <span key={item}>{item}<strong>Passed demo check</strong></span>)}
+            {['Store Information', 'Free Month Activation', 'Product Compliance'].map((item) => <span key={item}>{item}<strong>Passed demo check</strong></span>)}
           </div>
           <div className="payment-summary"><span>Status<strong>{reviewStatus}</strong></span></div>
           <button onClick={approveDemoStore}>Approve Demo Store</button>
         </section>,
         'ERIM review.',
-        'The platform checks store information, subscription payment, and product compliance before going live.'
+        'The platform checks store information, free month activation, and product compliance before going live.'
       );
     }
 
@@ -915,7 +930,15 @@ function App() {
 
   const payRent = () => {
     setRentPaid(true);
-    setNotice('Merchant subscription paid in Ugandan shillings. Store setup is now unlocked.');
+    setFreeTrialActive(false);
+    setNotice(`Merchant subscription paid in Ugandan shillings. ${selectedPlan.name} is active.`);
+    setActivePage('dashboard');
+  };
+
+  const activateFreeMonthFromRent = () => {
+    setRentPaid(true);
+    setFreeTrialActive(true);
+    setNotice(`Free first month activated. Your first ${selectedPlan.name} payment of ${ugx(selectedPlan.amount)} is due on ${firstBillingDateLabel}.`);
     setActivePage('dashboard');
   };
 
@@ -967,10 +990,10 @@ function App() {
       <section className="subscription-reminder">
         <div>
           <span>Current Plan: {rentPaid ? selectedPlan.name.replace('Plan', 'Merchant') : 'Not active'}</span>
-          <strong>{rentPaid ? 'Days Remaining: 284' : 'Subscription required before setup'}</strong>
-          <small>{rentPaid ? 'Renewal Date: 12 March 2027' : 'Choose a plan and pay in Ugx to unlock publishing.'}</small>
+          <strong>{freeTrialActive ? `${FREE_TRIAL_DAYS} free days remaining` : rentPaid ? 'Days Remaining: 284' : 'Choose a plan to unlock setup'}</strong>
+          <small>{freeTrialActive ? `First billing date: ${firstBillingDateLabel}` : rentPaid ? 'Renewal Date: 12 March 2027' : 'First month is free. Payments start in month two.'}</small>
         </div>
-        <button onClick={() => setActivePage('rent')}>{rentPaid ? 'Renew Subscription' : 'Activate Plan'}</button>
+        <button onClick={() => setActivePage('rent')}>{rentPaid ? 'Manage Subscription' : 'Activate Plan'}</button>
         <button className="light-button" onClick={() => setMerchantStage('plans')}>Upgrade Plan</button>
       </section>
 
@@ -1049,8 +1072,8 @@ function App() {
       </section>
 
       <section className="rent-alert">
-        <span>{rentPaid ? `Current Plan: ${selectedPlan.name}. Subscription active for ${selectedPlan.validity}.` : `You have ${ugx(rentDue)} subscription rent due before shop setup is complete.`}</span>
-        <button onClick={() => setActivePage('rent')}>{rentPaid ? 'Manage Subscription' : 'Pay Subscription'}</button>
+        <span>{freeTrialActive ? `Free first month active on ${selectedPlan.name}. First payment of ${ugx(selectedPlan.amount)} is due on ${firstBillingDateLabel}.` : rentPaid ? `Current Plan: ${selectedPlan.name}. Subscription active for ${selectedPlan.validity}.` : 'No subscription payment is due today. Choose a plan to activate your free first month.'}</span>
+        <button onClick={() => setActivePage('rent')}>{rentPaid ? 'Manage Subscription' : 'Activate Free Month'}</button>
       </section>
     </>
   );
@@ -1059,7 +1082,7 @@ function App() {
     <section className="split-grid">
       <form className="panel product-form" onSubmit={createProduct}>
         <h2>Add product</h2>
-        {!rentPaid && <p className="warning">Pay platform rent before publishing and setting up a live shop.</p>}
+        {!rentPaid && <p className="warning">Choose a merchant plan to activate the free first month before publishing products.</p>}
         <label>Name<input value={product.name} onChange={(event) => setProduct({ ...product, name: event.target.value })} required /></label>
         <label>Category<input value={product.category} onChange={(event) => setProduct({ ...product, category: event.target.value })} required /></label>
         <label>Price in UGX<input type="number" min="0" value={product.price} onChange={(event) => setProduct({ ...product, price: event.target.value })} required /></label>
@@ -1172,7 +1195,7 @@ function App() {
       <article className="panel rent-card">
         <span className="metric-icon orange">Plan</span>
         <h2>Merchant subscription</h2>
-        <p>Merchants must pay a subscription in Ugandan shillings before setting up a live shop, publishing products, and receiving payouts.</p>
+        <p>Merchant accounts are free for the first month. Choose a plan now; payments in Ugandan shillings start from the second month of operation.</p>
         <div className="rent-plan-grid">
           {subscriptionPlans.map((plan) => (
             <button
@@ -1180,18 +1203,19 @@ function App() {
               key={plan.id}
               onClick={() => {
                 setSelectedPlan(plan);
-                setRentPaid(false);
+                if (!freeTrialActive) setRentPaid(false);
               }}
               type="button"
             >
               <span>{plan.name}</span>
               <strong>{ugx(plan.amount)}</strong>
-              <small>{plan.validity}{plan.recommended ? ' - Recommended' : ''}</small>
+              <small>{plan.validity} after free month{plan.recommended ? ' - Recommended' : ''}</small>
             </button>
           ))}
         </div>
-        <div className="rent-total">{ugx(selectedPlan.amount)}</div>
-        <button onClick={payRent} disabled={rentPaid}>{rentPaid ? 'Subscription Active' : 'Pay Subscription Now'}</button>
+        <div className="rent-total">{freeTrialActive ? ugx(selectedPlan.amount) : ugx(0)}</div>
+        <p className="subtle">{freeTrialActive ? `No payment due today. First billing: ${ugx(selectedPlan.amount)} on ${firstBillingDateLabel}.` : `Use Activate Free Month for new shops, or pay ${ugx(selectedPlan.amount)} when month two begins.`}</p>
+        <button onClick={freeTrialActive ? payRent : activateFreeMonthFromRent} disabled={rentPaid && !freeTrialActive}>{freeTrialActive ? 'Pay Month Two Subscription' : rentPaid ? 'Subscription Active' : 'Activate Free First Month'}</button>
       </article>
       <article className="panel">
         <h2>ERIM receiving accounts</h2>
@@ -1206,7 +1230,7 @@ function App() {
       </article>
       <article className="panel">
         <h2>Setup checklist</h2>
-        {['Pay merchant subscription', 'Complete KYC', 'Add products with quantity and image', 'Configure shipping', 'Connect payout wallet'].map((item, index) => (
+        {['Activate free first month', 'Complete KYC', 'Add products with quantity and image', 'Configure shipping', 'Connect payout wallet'].map((item, index) => (
           <div className="check-row" key={item}><span>{index === 0 && rentPaid ? 'Done' : 'Step'}</span>{item}</div>
         ))}
       </article>
@@ -1318,7 +1342,7 @@ function App() {
         </a>
         <button className="store-switcher" onClick={() => setActivePage('profile')}>
           <span className="store-badge">Bag</span>
-          <span><strong>{overview?.shop?.name || 'Erim Fashion Store'}</strong><small>{rentPaid ? 'Verified Merchant' : 'Subscription pending'}</small></span>
+          <span><strong>{overview?.shop?.name || 'Erim Fashion Store'}</strong><small>{subscriptionStateText}</small></span>
         </button>
         <nav>
           {navGroups.map((group) => (
@@ -1467,7 +1491,7 @@ function App() {
               <span className="store-badge">Bag</span>
               <div>
                 <strong>{overview?.shop?.name || merchant?.businessName || 'Erim Fashion Store'}</strong>
-                <small>{merchant?.status || (rentPaid ? 'Verified Merchant' : 'Subscription pending')}</small>
+                <small>{merchant?.status || subscriptionStateText}</small>
               </div>
             </div>
             <button onClick={() => { setActivePage('profile'); setShowStoreMenu(false); }}>Store Profile</button>
