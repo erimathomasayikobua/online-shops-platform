@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 const money = (value) => `UGX ${Math.round(Number(value || 0)).toLocaleString('en-UG')}`;
 
 const navGroups = [
@@ -135,11 +136,34 @@ function App() {
     }
   };
 
-  const logoutAdmin = () => {
+  const logoutAdmin = (message = '') => {
+    const logoutMessage = typeof message === 'string' ? message : '';
     localStorage.removeItem('erimAdminAuth');
     setAdminUser(null);
     setOverview(null);
+    if (logoutMessage) setAuthNotice(logoutMessage);
   };
+
+  useEffect(() => {
+    if (!adminUser) return undefined;
+
+    let timerId;
+    const resetTimer = () => {
+      window.clearTimeout(timerId);
+      timerId = window.setTimeout(() => {
+        logoutAdmin('Session expired after 10 minutes of inactivity. Please sign in again.');
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+
+    resetTimer();
+    events.forEach((eventName) => window.addEventListener(eventName, resetTimer, { passive: true }));
+
+    return () => {
+      window.clearTimeout(timerId);
+      events.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+    };
+  }, [adminUser]);
 
   const shops = overview?.shops || [];
   const orders = overview?.orders || [];
@@ -691,7 +715,7 @@ function App() {
         <header className="admin-topbar">
           <div><h1>{pageTitle}</h1><p>{adminRole}: full access to ERIM platform controls</p></div>
           <label className="admin-search"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search anything..." /></label>
-          <button className="icon-tool" onClick={() => setActivePage('tickets')}>Bell <b>{metrics.openTickets || 0}</b></button>
+          <button className="icon-tool" onClick={() => setActivePage('tickets')} aria-label="Notifications" title="Notifications"><span aria-hidden="true">🔔</span><b>{metrics.openTickets || 0}</b></button>
           <button className="icon-tool" onClick={() => setActivePage('chat-monitoring')}>Chat</button>
           <button className="profile-tool" onClick={logoutAdmin}><span>{actor.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span><strong>ERIM Admin<small>{adminRole}</small></strong></button>
         </header>

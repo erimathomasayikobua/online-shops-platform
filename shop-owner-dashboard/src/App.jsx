@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 const money = (value) => `Ugx ${Math.round(Number(value || 0)).toLocaleString('en-UG')}`;
 const ugx = money;
 const FREE_TRIAL_DAYS = 30;
@@ -603,7 +604,8 @@ function App() {
     loadOverview();
   };
 
-  const logoutMerchant = () => {
+  const logoutMerchant = (message = '') => {
+    const logoutMessage = typeof message === 'string' ? message : '';
     setMerchant(null);
     setRentPaid(false);
     setFreeTrialActive(false);
@@ -612,9 +614,30 @@ function App() {
     setShowChat(false);
     setShowStoreMenu(false);
     setShowHelpCenter(false);
-    setNotice('');
+    setNotice(logoutMessage);
     setMerchantStage('login');
   };
+
+  useEffect(() => {
+    if (!merchant) return undefined;
+
+    let timerId;
+    const resetTimer = () => {
+      window.clearTimeout(timerId);
+      timerId = window.setTimeout(() => {
+        logoutMerchant('You were logged out after 10 minutes of inactivity.');
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+
+    resetTimer();
+    events.forEach((eventName) => window.addEventListener(eventName, resetTimer, { passive: true }));
+
+    return () => {
+      window.clearTimeout(timerId);
+      events.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+    };
+  }, [merchant]);
 
   const renderOnboardingShell = (children, asideTitle, asideText) => (
     <div className="merchant-onboarding">
@@ -1376,6 +1399,8 @@ function App() {
           <div className="topbar-actions">
             <button
               className={showNotifications ? 'active-tool' : ''}
+              aria-label="Notifications"
+              title="Notifications"
               onClick={() => {
                 setShowNotifications((current) => !current);
                 setShowChat(false);
@@ -1383,7 +1408,7 @@ function App() {
                 setShowHelpCenter(false);
               }}
             >
-              Bell <span className="badge-count">{notifications.length}</span>
+              <span aria-hidden="true">🔔</span><span className="badge-count">{notifications.length}</span>
             </button>
             <button
               className={showChat ? 'active-tool' : ''}

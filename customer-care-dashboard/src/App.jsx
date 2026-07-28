@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 
 const agents = ['Sneha Chowdhury', 'Rohit Das', 'Ananya Patel', 'Vikram Singh', 'Priya Nair'];
 const statusLabels = {
@@ -161,13 +162,36 @@ function App() {
     setNotice(result.message);
   };
 
-  const logoutCare = () => {
+  const logoutCare = (message = '') => {
+    const logoutMessage = typeof message === 'string' ? message : '';
     localStorage.removeItem('erimCareAuth');
     setCareUser(null);
     setOverview(null);
     setSelectedTicketId('');
     setNotice('');
+    if (logoutMessage) setAuthNotice(logoutMessage);
   };
+
+  useEffect(() => {
+    if (!careUser) return undefined;
+
+    let timerId;
+    const resetTimer = () => {
+      window.clearTimeout(timerId);
+      timerId = window.setTimeout(() => {
+        logoutCare('Session expired after 10 minutes of inactivity. Please sign in again.');
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+
+    resetTimer();
+    events.forEach((eventName) => window.addEventListener(eventName, resetTimer, { passive: true }));
+
+    return () => {
+      window.clearTimeout(timerId);
+      events.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+    };
+  }, [careUser]);
 
   const tickets = overview?.tickets || [];
   const orders = overview?.orders || [];
@@ -724,7 +748,7 @@ function App() {
           <div><h1>Customer Care Dashboard</h1><p>Overview of support activities and ticket insights</p></div>
           <label className="care-search"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tickets, customers..." /></label>
           <select className="agent-status" value={agentStatus} onChange={(event) => setAgentStatus(event.target.value)}><option>Online</option><option>Busy</option><option>Away</option></select>
-          <button className="bell-button" onClick={() => setShowNotifications((current) => !current)}>Bell <b>{notifications.length}</b></button>
+          <button className="bell-button" onClick={() => setShowNotifications((current) => !current)} aria-label="Notifications" title="Notifications"><span aria-hidden="true">🔔</span><b>{notifications.length}</b></button>
           <button className="agent-profile" onClick={logoutCare}><span>{careUser.user.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span><strong>{careUser.user.name}<small>Logout</small></strong></button>
           {showNotifications && (
             <div className="notification-popover">

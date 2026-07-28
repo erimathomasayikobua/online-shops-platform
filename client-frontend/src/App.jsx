@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 
 const currencies = [
   { code: 'UGX', label: 'Ugx', rate: 1, locale: 'en-UG' },
@@ -43,6 +44,17 @@ const roleDestinations = {
 
 const normalizeWhatsAppNumber = (value = '') => value.replace(/[^\d]/g, '');
 
+const getDealTimeRemaining = () => {
+  const now = new Date();
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
+  const totalSeconds = Math.max(0, Math.floor((endOfDay.getTime() - now.getTime()) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(' : ');
+};
+
 const heroSlides = [
   {
     id: 'summer-sale',
@@ -51,6 +63,7 @@ const heroSlides = [
     highlight: 'Savings.',
     copy: 'Up to 60% off on electronics, fashion, home goods and more.',
     category: 'All',
+    productIds: ['prod-earbuds', 'prod-weekender', 'prod-linen-set', 'prod-charger'],
     benefits: ['100% Original', 'Easy Returns', 'Secure Payments', 'Fast Delivery']
   },
   {
@@ -60,6 +73,7 @@ const heroSlides = [
     highlight: 'Room.',
     copy: 'Shop home, kitchen, bedding, and decor picks from trusted ERIM merchants.',
     category: 'Home and Living',
+    productIds: ['prod-linen-set', 'prod-cookware', 'prod-charger', 'prod-earbuds'],
     benefits: ['Verified Stores', 'Pickup Options', 'Return Policies', 'Fast Delivery']
   },
   {
@@ -69,6 +83,7 @@ const heroSlides = [
     highlight: 'Local style.',
     copy: 'Discover apparel, bags, accessories, and seasonal offers from merchant stores.',
     category: 'Fashion',
+    productIds: ['prod-weekender', 'prod-midi', 'prod-earbuds', 'prod-linen-set'],
     benefits: ['Merchant Chat', 'Size Advice', 'Easy Returns', 'New Arrivals']
   }
 ];
@@ -132,6 +147,7 @@ function App() {
     { id: 'care-welcome', sender: 'ERIM Care', text: 'Hi, welcome to ERIM support. How can we help today?' }
   ]);
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
+  const [dealCountdown, setDealCountdown] = useState(getDealTimeRemaining);
 
   const selectedCurrency = useMemo(() => {
     return currencies.find((item) => item.code === currencyCode) || currencies[0];
@@ -149,6 +165,14 @@ function App() {
     const timer = window.setInterval(() => {
       setHeroSlideIndex((current) => (current + 1) % heroSlides.length);
     }, 5200);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setDealCountdown(getDealTimeRemaining());
+    }, 1000);
 
     return () => window.clearInterval(timer);
   }, []);
@@ -205,9 +229,13 @@ function App() {
   }, [searchedProducts, category, catalog.categoryTree]);
   const heroProducts = useMemo(() => {
     const slideProducts = getCategoryProducts(catalog.products, activeHeroSlide.category, catalog.categoryTree);
-    const products = slideProducts.length >= 4 ? slideProducts : catalog.products;
+    const featuredProducts = (activeHeroSlide.productIds || [])
+      .map((id) => catalog.products.find((product) => product.id === id))
+      .filter(Boolean);
+    const products = [...featuredProducts, ...slideProducts, ...catalog.products]
+      .filter((product, index, list) => list.findIndex((item) => item.id === product.id) === index);
     return products.slice(0, 4);
-  }, [activeHeroSlide.category, catalog.products, catalog.categoryTree]);
+  }, [activeHeroSlide.category, activeHeroSlide.id, catalog.products, catalog.categoryTree]);
 
   const groupedProducts = useMemo(() => {
     const activeCategories = category === 'All' ? catalog.categories : [category];
@@ -536,14 +564,39 @@ function App() {
     setKycNotice('KYC submitted. Erim compliance will review it shortly.');
   };
 
-  const logout = () => {
+  const logout = (message = 'Signed out of Erim.') => {
+    const logoutMessage = typeof message === 'string' ? message : 'Signed out of Erim.';
     localStorage.removeItem('erimToken');
     localStorage.removeItem('erimUser');
     setUser(null);
     setCart([]);
     setKycStatus({ status: 'not_started', submission: null });
-    setNotice('Signed out of Erim.');
+    setNotice(logoutMessage);
   };
+
+  useEffect(() => {
+    if (!user) return undefined;
+
+    let timerId;
+    const resetTimer = () => {
+      window.clearTimeout(timerId);
+      timerId = window.setTimeout(() => {
+        logout('You were signed out after 10 minutes of inactivity.');
+        setView('auth');
+        setAuthMode('login');
+        setAuthNotice('Session expired after 10 minutes of inactivity. Please sign in again.');
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+
+    resetTimer();
+    events.forEach((eventName) => window.addEventListener(eventName, resetTimer, { passive: true }));
+
+    return () => {
+      window.clearTimeout(timerId);
+      events.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+    };
+  }, [user]);
 
   const checkout = () => {
     if (!user) {
@@ -1372,14 +1425,14 @@ function App() {
           </section>
 
           <section className="service-strip">
-            {['Free Delivery', 'Easy Returns', 'Secure Payments', 'Earn Rewards', '24/7 Support'].map((item) => <span key={item}><strong>{item}</strong><small>On every purchase</small></span>)}
+            {['Easy Returns', 'Secure Payments', 'Earn Rewards', '24/7 Support'].map((item) => <span key={item}><strong>{item}</strong><small>On every purchase</small></span>)}
           </section>
 
           {notice && <p className="notice">{notice}</p>}
 
           <section className="featured-row">
             <article className="deal-card">
-              <div><h2>Deal of the Day</h2><span>Ends in 08 : 45 : 32</span></div>
+              <div><h2>Deal of the Day</h2><span>Ends in {dealCountdown}</span></div>
               {catalog.products[0] && (
                 <div className="deal-product">
                   <img src={catalog.products[0].image} alt={catalog.products[0].name} />
