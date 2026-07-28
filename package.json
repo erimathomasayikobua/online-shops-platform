@@ -85,6 +85,7 @@
     "npm": ">=8.0.0"
   },
   "dependencies": {
-    "caniuse-lite": "^1.0.30001782"
+    "caniuse-lite": "^1.0.30001782",
+    "mongodb": "^7.5.0"
   }
 }
