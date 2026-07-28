@@ -44,6 +44,72 @@ const roleDestinations = {
 
 const normalizeWhatsAppNumber = (value = '') => value.replace(/[^\d]/g, '');
 
+const marketLocations = {
+  Arua: { lat: 3.0191, lng: 30.9111 },
+  Hoima: { lat: 1.4353, lng: 31.3436 },
+  Masindi: { lat: 1.676, lng: 31.7244 },
+  FortPortal: { lat: 0.667, lng: 30.2744 },
+  Kagadi: { lat: 0.942, lng: 30.8083 },
+  Kampala: { lat: 0.3476, lng: 32.5825 },
+  Wakiso: { lat: 0.4044, lng: 32.4594 },
+  Entebbe: { lat: 0.0611, lng: 32.4699 },
+  Jinja: { lat: 0.4479, lng: 33.2026 },
+  Mbarara: { lat: -0.6072, lng: 30.6545 },
+  Gulu: { lat: 2.7746, lng: 32.299 },
+  Nairobi: { lat: -1.2921, lng: 36.8219 },
+  Kigali: { lat: -1.9441, lng: 30.0619 },
+  'Dar es Salaam': { lat: -6.7924, lng: 39.2083 },
+  Juba: { lat: 4.8594, lng: 31.5713 },
+  Kinshasa: { lat: -4.4419, lng: 15.2663 }
+};
+
+const supportedMarketLocations = Object.keys(marketLocations);
+
+const normalizeMarketLocation = (value = '') => {
+  const normalized = value.toLowerCase();
+  return supportedMarketLocations.find((location) => normalized.includes(location.toLowerCase())) || 'Kampala';
+};
+
+const distanceBetweenLocations = (from, to) => {
+  const origin = marketLocations[normalizeMarketLocation(from)];
+  const destination = marketLocations[normalizeMarketLocation(to)];
+  if (!origin || !destination) return Number.MAX_SAFE_INTEGER;
+
+  const toRadians = (value) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const latDelta = toRadians(destination.lat - origin.lat);
+  const lngDelta = toRadians(destination.lng - origin.lng);
+  const a = Math.sin(latDelta / 2) ** 2
+    + Math.cos(toRadians(origin.lat)) * Math.cos(toRadians(destination.lat)) * Math.sin(lngDelta / 2) ** 2;
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const nearestMarketLocation = (coords) => supportedMarketLocations
+  .map((location) => ({
+    location,
+    distance: distanceBetweenCoordinates(coords.latitude, coords.longitude, marketLocations[location].lat, marketLocations[location].lng)
+  }))
+  .sort((a, b) => a.distance - b.distance)[0]?.location || 'Kampala';
+
+const distanceBetweenCoordinates = (latA, lngA, latB, lngB) => {
+  const toRadians = (value) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const latDelta = toRadians(latB - latA);
+  const lngDelta = toRadians(lngB - lngA);
+  const a = Math.sin(latDelta / 2) ** 2
+    + Math.cos(toRadians(latA)) * Math.cos(toRadians(latB)) * Math.sin(lngDelta / 2) ** 2;
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const sortProductsByProximity = (products, customerLocation) => [...products].sort((first, second) => {
+  const firstDistance = distanceBetweenLocations(customerLocation, first.shop?.location);
+  const secondDistance = distanceBetweenLocations(customerLocation, second.shop?.location);
+  if (firstDistance !== secondDistance) return firstDistance - secondDistance;
+  return (second.shop?.rating || 0) - (first.shop?.rating || 0);
+});
+
 const getDealTimeRemaining = () => {
   const now = new Date();
   const endOfDay = new Date(now);
@@ -113,6 +179,7 @@ function App() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
   const [currencyCode, setCurrencyCode] = useState('UGX');
+  const [customerLocation, setCustomerLocation] = useState(() => localStorage.getItem('erimCustomerLocation') || 'Kampala');
   const [cart, setCart] = useState([]);
   const [notice, setNotice] = useState('');
   const [authNotice, setAuthNotice] = useState('');
@@ -178,6 +245,10 @@ function App() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem('erimCustomerLocation', customerLocation);
+  }, [customerLocation]);
+
+  useEffect(() => {
     if (!user) {
       setKycStatus({ status: 'not_started', submission: null });
       return;
@@ -193,14 +264,18 @@ function App() {
       .catch(() => setKycStatus({ status: 'not_started', submission: null }));
   }, [user]);
 
+  const proximitySortedProducts = useMemo(() => {
+    return sortProductsByProximity(catalog.products, customerLocation);
+  }, [catalog.products, customerLocation]);
+
   const searchedProducts = useMemo(() => {
-    return catalog.products
+    return proximitySortedProducts
       .filter((product) => product.name.toLowerCase().includes(query.toLowerCase()));
-  }, [catalog.products, query]);
+  }, [proximitySortedProducts, query]);
 
   const categorySummaries = useMemo(() => {
     const summaries = catalog.categories.map((item) => {
-      const categoryProducts = getCategoryProducts(catalog.products, item, catalog.categoryTree);
+      const categoryProducts = getCategoryProducts(proximitySortedProducts, item, catalog.categoryTree);
       const fromPrice = categoryProducts.length
         ? Math.min(...categoryProducts.map((product) => product.price))
         : 0;
@@ -216,26 +291,27 @@ function App() {
     return [
       {
         name: 'All',
-        count: catalog.products.length,
-        fromPrice: catalog.products.length ? Math.min(...catalog.products.map((product) => product.price)) : 0,
-        image: catalog.products[0]?.image
+        count: proximitySortedProducts.length,
+        fromPrice: proximitySortedProducts.length ? Math.min(...proximitySortedProducts.map((product) => product.price)) : 0,
+        image: proximitySortedProducts[0]?.image
       },
       ...summaries
     ];
-  }, [catalog.categories, catalog.products, catalog.categoryTree]);
+  }, [catalog.categories, proximitySortedProducts, catalog.categoryTree]);
 
   const displayedProducts = useMemo(() => {
     return getCategoryProducts(searchedProducts, category, catalog.categoryTree);
   }, [searchedProducts, category, catalog.categoryTree]);
+  const dealProduct = displayedProducts[0] || proximitySortedProducts[0];
   const heroProducts = useMemo(() => {
-    const slideProducts = getCategoryProducts(catalog.products, activeHeroSlide.category, catalog.categoryTree);
+    const slideProducts = getCategoryProducts(proximitySortedProducts, activeHeroSlide.category, catalog.categoryTree);
     const featuredProducts = (activeHeroSlide.productIds || [])
-      .map((id) => catalog.products.find((product) => product.id === id))
+      .map((id) => proximitySortedProducts.find((product) => product.id === id))
       .filter(Boolean);
-    const products = [...featuredProducts, ...slideProducts, ...catalog.products]
+    const products = [...slideProducts, ...featuredProducts, ...proximitySortedProducts]
       .filter((product, index, list) => list.findIndex((item) => item.id === product.id) === index);
     return products.slice(0, 4);
-  }, [activeHeroSlide.category, activeHeroSlide.id, catalog.products, catalog.categoryTree]);
+  }, [activeHeroSlide.category, activeHeroSlide.id, proximitySortedProducts, catalog.categoryTree]);
 
   const groupedProducts = useMemo(() => {
     const activeCategories = category === 'All' ? catalog.categories : [category];
@@ -255,6 +331,23 @@ function App() {
   const shopHeroSlide = () => {
     setCategory(activeHeroSlide.category);
     setNotice(`${activeHeroSlide.eyebrow} products are now showing.`);
+  };
+
+  const useNearestMarket = () => {
+    if (!navigator.geolocation) {
+      setNotice('Location detection is not available in this browser. Choose your city manually.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nearest = nearestMarketLocation(position.coords);
+        setCustomerLocation(nearest);
+        setNotice(`Products are now prioritized near ${nearest}.`);
+      },
+      () => setNotice('Location permission was not granted. Choose your city manually.'),
+      { enableHighAccuracy: false, maximumAge: 300000, timeout: 8000 }
+    );
   };
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -1374,6 +1467,20 @@ function App() {
         </select>
       </nav>
 
+      <section className="location-lock">
+        <div>
+          <strong>Shopping near {customerLocation}</strong>
+          <span>Nearby merchant products appear first, then other areas follow by distance.</span>
+        </div>
+        <label>
+          <span>Client location</span>
+          <select value={customerLocation} onChange={(event) => setCustomerLocation(event.target.value)}>
+            {supportedMarketLocations.map((location) => <option key={location}>{location}</option>)}
+          </select>
+        </label>
+        <button type="button" onClick={useNearestMarket}>Use my location</button>
+      </section>
+
       <main className="shop-layout">
         <aside className="category-rail">
           <h2>Shop by Category</h2>
@@ -1581,6 +1688,11 @@ function App() {
         >
           {showFloatingMenu ? 'Close' : 'Chat'}
         </button>
+        <footer className='shop-footer'>
+          <div className=''>
+            <span>&copy;2026 ERIM. All rights reserved.</span>
+          </div>
+        </footer>
       </div>
     </div>
   );
