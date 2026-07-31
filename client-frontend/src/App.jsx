@@ -58,7 +58,7 @@ const marketLocations = {
   Gulu: { lat: 2.7746, lng: 32.299 },
   Nairobi: { lat: -1.2921, lng: 36.8219 },
   Kigali: { lat: -1.9441, lng: 30.0619 },
-  'Dar es Salaam': { lat: -6.7924, lng: 39.2083 },
+  Dar_es_Salaam: { lat: -6.7924, lng: 39.2083 },
   Juba: { lat: 4.8594, lng: 31.5713 },
   Kinshasa: { lat: -4.4419, lng: 15.2663 }
 };
