@@ -57,10 +57,8 @@ const marketLocations = {
   Mbarara: { lat: -0.6072, lng: 30.6545 },
   Gulu: { lat: 2.7746, lng: 32.299 },
   Nairobi: { lat: -1.2921, lng: 36.8219 },
-  Kigali: { lat: -1.9441, lng: 30.0619 },
   Dar_es_Salaam: { lat: -6.7924, lng: 39.2083 },
-  Juba: { lat: 4.8594, lng: 31.5713 },
-  Kinshasa: { lat: -4.4419, lng: 15.2663 }
+  Mombasa: {lat: 4.0437, lng: 39.6589 }
 };
 
 const supportedMarketLocations = Object.keys(marketLocations);
