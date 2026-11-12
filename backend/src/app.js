@@ -22,15 +22,38 @@ const customerCareRoutes = require('./routes/customerCareRoutes');
 
 const app = express();
 
+// Railway (and most PaaS proxies) terminate TLS in front of the container, so the
+// rate limiter must trust the first proxy hop to see the real client IP.
+if (env.isProduction) {
+  app.set('trust proxy', 1);
+}
+
+const allowedOrigins = env.isProduction ? env.cors.productionOrigins : env.cors.developmentOrigins;
+
+if (env.isProduction && !allowedOrigins.length) {
+  console.warn(
+    'FRONTEND_URLS is empty. Cross-origin browser requests will be rejected — set it to the deployed frontend origins (comma separated).'
+  );
+}
+
 app.use(helmet());
 app.use(
   cors({
-    origin: env.isProduction ? env.cors.productionOrigins : env.cors.developmentOrigins,
+    origin: allowedOrigins,
     credentials: true,
   })
 );
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 app.use(express.json());
+
+app.get('/', (req, res) => {
+  res.json({
+    service: 'online-shops-platform',
+    status: 'OK',
+    health: '/api/health',
+    docs: '/api/health',
+  });
+});
 
 app.get(
   '/api/health',
@@ -39,6 +62,7 @@ app.get(
       status: 'OK',
       service: 'online-shops-platform',
       database: await getDatabaseStatus(),
+      environment: env.nodeEnv,
       timestamp: new Date().toISOString(),
     });
   })

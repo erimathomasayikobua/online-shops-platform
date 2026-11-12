@@ -276,6 +276,16 @@ const insertAuditLogs = async (connection) => {
 };
 
 const runSeed = async () => {
+  // Seeding truncates every application table, so it must never run against a
+  // hosted/production database by accident.
+  if (env.isProduction && !process.argv.includes('--force')) {
+    console.error(
+      'Refusing to seed demo data with NODE_ENV=production. Re-run with "--force" only if you intend to wipe this database.'
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   console.log(`Seeding database "${env.db.name}" on ${env.db.host}:${env.db.port}`);
 
   await withTransaction(async (connection) => {

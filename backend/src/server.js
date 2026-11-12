@@ -8,11 +8,22 @@ const start = async () => {
   try {
     const target = await connectDatabase();
     console.log(
-      `MySQL connected: ${target.user}@${target.host}:${target.port}/${target.database}`
+      `MySQL connected: ${target.user}@${target.host}:${target.port}/${target.database}` +
+        `${target.ssl ? ' (TLS)' : ''}`
     );
 
-    const server = app.listen(env.port, () => {
-      console.log(`Commerce API running at http://localhost:${env.port}`);
+    // Hosted platforms route traffic to the container, so bind all interfaces.
+    const server = app.listen(env.port, env.host, () => {
+      const publicUrl = env.publicDomain
+        ? `https://${env.publicDomain}`
+        : `http://localhost:${env.port}`;
+      console.log(`Commerce API running on ${env.host}:${env.port} — ${publicUrl}`);
+      console.log(`Health check available at ${publicUrl}/api/health`);
+    });
+
+    server.on('error', (error) => {
+      console.error(`HTTP server error: ${error.message}`);
+      process.exit(1);
     });
 
     const shutdown = (signal) => {

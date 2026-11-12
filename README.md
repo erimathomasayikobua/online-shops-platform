@@ -262,10 +262,9 @@ Create production environment files:
 ### Deployment Options
 
 **Backend (Node.js):**
-- Heroku
-- AWS EC2/Elastic Beanstalk
-- Digital Ocean Droplets
-- Google Cloud Platform
+- Railway (recommended — config included, see below)
+- Render, Fly.io
+- AWS EC2 / Elastic Beanstalk
 
 **Frontend (React Apps):**
 - Netlify
@@ -274,9 +273,29 @@ Create production environment files:
 - Firebase Hosting
 
 **Database:**
-- MongoDB Atlas (recommended)
-- AWS DocumentDB
-- Self-hosted MongoDB
+- Railway MySQL (recommended when the backend runs on Railway)
+- AWS RDS for MySQL
+- PlanetScale
+- Self-hosted MySQL 8
+
+### Deploying the backend on Railway
+
+The backend is Railway-ready: [`railway.json`](railway.json) (and
+[`backend/railway.json`](backend/railway.json)) define the build, start and
+pre-deploy commands, `GET /api/health` is wired up as the healthcheck, and
+[`backend/src/config/env.js`](backend/src/config/env.js) reads the platform's
+`MYSQL_URL` / `MYSQL*` variables automatically.
+
+1. Push to GitHub and create a service from the repo in your Railway project.
+2. In the API service → **Variables**, reference `MYSQL_URL` from the MySQL service.
+3. Add `NODE_ENV=production`, `JWT_SECRET`, and `FRONTEND_URLS` (the deployed
+   frontend origins).
+4. Deploy — the pre-deploy step runs `db:migrate` and `db:create-admin`, so the
+   schema and the `admin@erim.ug` account are created automatically.
+5. Point each frontend at `https://<api-domain>/api` through `VITE_API_URL`.
+
+Step-by-step walkthrough, variables reference and troubleshooting:
+[docs/deploy-railway.md](docs/deploy-railway.md).
 
 ## 🔧 Configuration
 

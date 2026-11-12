@@ -59,6 +59,9 @@
       "!src/server.js"
     ]
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "keywords": [
     "api",
     "backend",
