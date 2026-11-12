@@ -36,6 +36,9 @@
     "lint:shop-owner": "cd shop-owner-dashboard && npm run lint",
     "lint:admin": "cd admin-panel && npm run lint",
     "lint:customer-care": "cd customer-care-dashboard && npm run lint",
+    "db:setup": "cd backend && npm run db:setup",
+    "db:migrate": "cd backend && npm run db:migrate",
+    "db:seed": "cd backend && npm run db:seed",
     "setup": "npm install && npm run install:all",
     "install:all": "concurrently \"cd backend && npm install\" \"cd client-frontend && npm install\" \"cd shop-owner-dashboard && npm install\" \"cd admin-panel && npm install\" \"cd customer-care-dashboard && npm install\"",
     "clean": "npm run clean:backend && npm run clean:client && npm run clean:shop-owner && npm run clean:admin && npm run clean:customer-care",
@@ -71,7 +74,7 @@
     "marketplace",
     "react",
     "nodejs",
-    "mongodb",
+    "mysql",
     "platform"
   ],
   "author": "Online Shops Platform Team",
@@ -85,7 +88,6 @@
     "npm": ">=8.0.0"
   },
   "dependencies": {
-    "caniuse-lite": "^1.0.30001782",
-    "mongodb": "^7.5.0"
+    "caniuse-lite": "^1.0.30001782"
   }
 }

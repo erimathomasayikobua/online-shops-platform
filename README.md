@@ -26,7 +26,7 @@ This platform consists of multiple applications working together to provide a co
                     └─────────────────────────────────┘
                                │
                     ┌─────────────────────────────────┐
-                    │      MongoDB Database           │
+                    │      MySQL Database             │
                     └─────────────────────────────────┘
 ```
 
@@ -75,7 +75,7 @@ This platform consists of multiple applications working together to provide a co
 
 ### Prerequisites
 - Node.js (v18 or higher)
-- MongoDB (v5 or higher)
+- MySQL (v8 or higher, running locally or reachable over the network)
 - npm or yarn package manager
 - Git
 
@@ -114,15 +114,21 @@ This will start all applications concurrently:
 
 ```
 online-shops-platform/
-├── backend/                 # Node.js/Express API server
+├── backend/                 # Node.js/Express API server (MySQL)
+│   ├── scripts/
+│   │   ├── migrate.js      # Creates the database and applies SQL migrations
+│   │   └── seed.js         # Loads the demo dataset
 │   ├── src/
-│   │   ├── controllers/     # Request handlers
-│   │   ├── models/         # Database models
-│   │   ├── routes/         # API routes
-│   │   ├── middleware/     # Custom middleware
-│   │   ├── services/       # Business logic
-│   │   ├── utils/          # Utility functions
-│   │   └── config/         # Configuration files
+│   │   ├── config/         # Environment + MySQL connection pool
+│   │   ├── db/
+│   │   │   ├── migrations/ # SQL schema migrations
+│   │   │   └── seedData.js # Demo dataset
+│   │   ├── repositories/   # SQL access layer mapped to API shapes
+│   │   ├── routes/         # Express routers per API area
+│   │   ├── services/       # Shared response composition
+│   │   ├── utils/          # Helpers (auth, passwords, values, ids)
+│   │   ├── app.js          # Express app + middleware
+│   │   └── server.js       # Boots the app after connecting to MySQL
 │   └── tests/              # Backend tests
 ├── client-frontend/         # Customer-facing React app
 │   ├── src/
@@ -165,18 +171,31 @@ online-shops-platform/
 - `npm run dev:admin` - Start only the admin panel
 - `npm run dev:customer-care` - Start only the customer care dashboard
 
-### Database Setup
+### Database Setup (MySQL)
 
-1. **Install MongoDB** locally or use MongoDB Atlas
-2. **Update the connection string** in your `.env` file
-3. **Run database migrations** (if any):
+1. **Start MySQL** locally (or use a managed MySQL instance).
+2. **Create `backend/.env`** from the template and fill in your credentials:
    ```bash
-   cd backend && npm run migrate
+   cp backend/.env.example backend/.env
+   # then set DB_USER / DB_PASSWORD (and DB_NAME if you prefer another name)
    ```
-4. **Seed initial data** (optional):
+3. **Create the database and schema** — the migrator creates the database itself:
    ```bash
-   cd backend && npm run seed
+   cd backend && npm run db:migrate
    ```
+4. **Load the demo data** (users, shops, products, orders, tickets, admin collections):
+   ```bash
+   cd backend && npm run db:seed
+   ```
+
+   Or do both in one step:
+   ```bash
+   cd backend && npm run db:setup
+   ```
+
+The schema lives in [`backend/src/db/migrations`](backend/src/db/migrations) and is applied in filename order. Applied files are tracked in the `schema_migrations` table, so re-running `db:migrate` is safe. `db:seed` truncates the application tables and reloads the demo dataset — use it in development only.
+
+Demo accounts created by the seed (password `pass123`): `customer@erim.test`, `seller@erim.test`, `admin@erim.test`, `care@erim.test`.
 
 ### API Documentation
 
@@ -249,7 +268,8 @@ Create production environment files:
 Key environment variables (see `.env.example` for full list):
 
 **Backend:**
-- `MONGODB_URI`: Database connection string
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`: MySQL connection settings
+- `DB_POOL_SIZE`, `DB_CONNECT_TIMEOUT`: Connection pool tuning (optional)
 - `JWT_SECRET`: Secret key for JWT tokens
 - `STRIPE_SECRET_KEY`: Payment processing
 - `CLOUDINARY_*`: File upload service
@@ -322,9 +342,9 @@ netstat -an | findstr :5000
 ```
 
 **Database connection issues:**
-- Verify MongoDB is running
-- Check connection string in `.env`
-- Ensure database user has proper permissions
+- Verify MySQL is running (`Get-Service *mysql*` on Windows, `systemctl status mysql` on Linux)
+- Check `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` in `backend/.env`
+- Ensure the database user can create databases, or create `DB_NAME` manually and re-run `npm run db:migrate`
 
 **Build failures:**
 ```bash
