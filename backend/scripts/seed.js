@@ -73,8 +73,8 @@ const insertUsers = async (connection) => {
     await connection.query(
       `INSERT INTO users
         (id, name, email, password_hash, role, status, verification_status, admin_role,
-         permissions, shop_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         permissions, shop_id, must_change_password, personal_email_required, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         user.id,
         user.name,
@@ -86,6 +86,8 @@ const insertUsers = async (connection) => {
         user.adminRole || null,
         JSON.stringify(user.permissions || []),
         user.shopId || null,
+        user.mustChangePassword ? 1 : 0,
+        user.personalEmailRequired ? 1 : 0,
         timestampAt(index),
       ]
     );

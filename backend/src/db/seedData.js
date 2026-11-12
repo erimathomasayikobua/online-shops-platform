@@ -5,6 +5,9 @@
  * module lets the seed script and tests share the same fixtures.
  * Passwords are stored in plain text here only to be hashed by scripts/seed.js.
  */
+const DEFAULT_ADMIN_EMAIL = 'admin@erim.ug';
+const DEFAULT_ADMIN_PASSWORD = 'Erim-Admin-2026';
+
 const categories = [
   {
     id: 'cat-health',
@@ -72,6 +75,21 @@ const users = [
     status: 'active',
     adminRole: 'Support Agent',
     permissions: ['tickets', 'chat', 'knowledge_base'],
+  },
+  {
+    // Platform owner account. The password is temporary: login returns
+    // requiresPasswordChange=true and the UI forces a reset before use.
+    id: 'user-default-admin',
+    name: 'Platform Administrator',
+    email: DEFAULT_ADMIN_EMAIL,
+    password: DEFAULT_ADMIN_PASSWORD,
+    role: 'admin',
+    status: 'active',
+    verificationStatus: 'verified',
+    adminRole: 'Super Admin',
+    permissions: ['all'],
+    mustChangePassword: true,
+    personalEmailRequired: true,
   },
 ];
 
@@ -548,6 +566,8 @@ const auditLogs = [
 ];
 
 module.exports = {
+  DEFAULT_ADMIN_EMAIL,
+  DEFAULT_ADMIN_PASSWORD,
   categories,
   users,
   kycSubmissions,

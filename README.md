@@ -197,6 +197,23 @@ The schema lives in [`backend/src/db/migrations`](backend/src/db/migrations) and
 
 Demo accounts created by the seed (password `pass123`): `customer@erim.test`, `seller@erim.test`, `admin@erim.test`, `care@erim.test`.
 
+**Default platform admin**
+
+`npm run db:setup` also provisions the owner account:
+
+- Account ID: `admin@erim.ug`
+- Temporary password: `Erim-Admin-2026` (override with the `DEFAULT_ADMIN_PASSWORD` env var)
+- Role: `admin` / `Super Admin` with `all` permissions
+- The account is flagged `must_change_password`, so the API responds with `requiresPasswordChange: true` and the client forces a password reset on first login.
+
+To add this account to an existing database **without wiping data**, run:
+
+```bash
+cd backend && npm run db:create-admin
+```
+
+Re-running it is safe — if the account already exists it is left untouched, so a password that has already been changed is never reset.
+
 ### API Documentation
 
 The backend API is documented using OpenAPI/Swagger. Once the backend is running, visit:
